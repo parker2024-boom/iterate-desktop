@@ -668,6 +668,15 @@ function applyTimelinePrefill(payload: TimelinePrefillPayload) {
   flushTimelinePrefill()
 }
 
+function getDraft(): TimelinePrefillPayload {
+  return {
+    userInput: rawUserInput.value,
+    selectedOptions: [...selectedOptions.value],
+    draggedImages: [...draggedImages.value],
+    attachedFiles: attachedFiles.value.map(file => ({ ...file })),
+  }
+}
+
 // 加载继续回复配置
 async function loadReplyConfig() {
   try {
@@ -922,7 +931,7 @@ async function backupCurrentSubmissionToClipboard() {
       enabled: copySubmissionToClipboardEnabled.value,
       userInput: rawUserInput.value,
       selectedOptions: selectedOptions.value,
-      writeText: text => navigator.clipboard.writeText(text),
+      writeText: text => invoke('plugin:clipboard-manager|write_text', { text }),
     })
   }
   catch (error) {
@@ -1219,6 +1228,7 @@ async function handleGoalSubmit() {
       return
     }
 
+    await backupCurrentSubmissionToClipboard()
     const liveGoalSnapshot = await applyLiveGoalIntent(`/goal ${goalTitle}`)
     const huiSnapshot = shouldPrefetchGoalRunHuiSnapshot(goalText)
       ? await getGoalRunHuiSnapshot(liveGoalSnapshot)
@@ -1266,6 +1276,7 @@ async function handleGoalSubmit() {
 
 defineExpose({
   applyTimelinePrefill,
+  getDraft,
 })
 </script>
 
