@@ -78,6 +78,7 @@
             "core:webview:allow-webview-size",
             "shell:allow-open",
             "clipboard-manager:allow-write-text",
+            "clipboard-manager:allow-read-text",
             "global-shortcut:allow-register",
             "global-shortcut:allow-unregister",
             "global-shortcut:allow-is-registered"

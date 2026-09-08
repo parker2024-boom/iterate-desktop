@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
+import { useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { refreshCrossDevice, useCrossDevice } from '../../composables/useCrossDevice'
 import SyncSettingsPreview from './SyncSettingsPreview.vue'
@@ -12,6 +13,7 @@ interface ConnectionConfig {
   peer_port: number
 }
 interface ConfigResult { config: ConnectionConfig, peer_name: string | null }
+const message = useMessage()
 const busy = ref(false)
 const loaded = ref(false)
 const error = ref('')
@@ -57,7 +59,9 @@ async function loadSettings() {
   finally { busy.value = false }
 }
 
-async function runAction(action: 'save' | 'test' | 'generate' | 'pair') {
+async function runAction(action: 'save' | 'test' | 'generate' | 'pair' | 'paste') {
+  if (busy.value || !loaded.value)
+    return
   if (![config.value.listen_port, config.value.peer_port].every(port => Number.isInteger(port) && port >= 1 && port <= 65535)) {
     error.value = '端口须为 1–65535'
     return
@@ -65,17 +69,28 @@ async function runAction(action: 'save' | 'test' | 'generate' | 'pair') {
   busy.value = true
   error.value = ''
   notice.value = ''
+  const importing = action === 'pair' || action === 'paste'
+  let imported = false
   try {
+    if (action === 'paste') {
+      const clipboard = await invoke<string | null>('plugin:clipboard-manager|read_text')
+      pairingCode.value = clipboard?.trim() || ''
+      if (!pairingCode.value)
+        throw new Error('剪贴板为空，请先在另一端复制本机配对码。')
+    }
+    if (importing && !pairingCode.value.trim().startsWith('iterate-pair-v2:'))
+      throw new Error('剪贴板内容不是 iterate 配对码，请在另一端点击“复制本机配对码”。')
     if (action !== 'test') {
       const result = await invoke<ConfigResult>('save_cross_device_config', {
-        config: config.value,
-        pairingCode: action === 'pair' ? pairingCode.value.trim() : null,
+        config: importing ? { ...config.value, peer_host: '', backup_peer_host: '' } : config.value,
+        pairingCode: importing ? pairingCode.value.trim() : null,
       })
       config.value = result.config
       peerName.value = result.peer_name
       savedConfig.value = JSON.stringify(result.config)
       ownCode.value = ''
-      if (action === 'pair') {
+      if (importing) {
+        imported = true
         pairingCode.value = ''
         notice.value = `已添加对端 ${peerName.value || ''}，正在检查连接。`
       }
@@ -87,28 +102,37 @@ async function runAction(action: 'save' | 'test' | 'generate' | 'pair') {
       ownCode.value = await invoke<string>('generate_cross_device_pairing')
       await copyCode()
     }
-    else if (action === 'test' || action === 'pair') {
+    else if (action === 'test' || importing) {
       const result = await invoke<{ message: string }>('test_cross_device_connection', { config: config.value, pairingCode: null })
       notice.value = result.message
+      if (importing)
+        message.success(`已写入对端配置并连接：${peerName.value || '对端'}`)
     }
   }
   catch (cause) {
     error.value = String(cause)
-    if (action === 'pair' && !pairingCode.value)
+    if (imported) {
       notice.value = '对端资料已保存，连接检查未通过。请确认另一端也已导入本机配对码，且地址可达。'
+      message.warning('对端配置已写入，连接尚未成功')
+    }
+    else { message.error(String(cause)) }
   }
   finally {
-    await refreshCrossDevice().catch(() => {})
     busy.value = false
+    void refreshCrossDevice().catch(() => {})
   }
 }
 
 async function copyCode() {
   try {
-    await navigator.clipboard.writeText(ownCode.value)
-    notice.value = '配对码已复制，只发送给需要配对的设备。'
+    await invoke('plugin:clipboard-manager|write_text', { text: ownCode.value })
+    notice.value = ''
+    message.success('本机配对码已复制，在另一端点击“一键粘贴并写入”')
   }
-  catch { error.value = '复制失败，请选中配对码手动复制。' }
+  catch {
+    error.value = '复制失败，请选中配对码手动复制。'
+    message.error(error.value)
+  }
 }
 
 onMounted(loadSettings)
@@ -117,7 +141,7 @@ onMounted(loadSettings)
 <template>
   <section aria-label="跨设备配置">
     <p class="mb-3 text-sm opacity-75">
-      两端分别生成并交换配对码，再各自点击“配对并连接”。IP 支持以 / 分隔填写主、备用地址；连接成功后，在标题栏开启提醒。
+      这边复制本机配对码，另一端一键粘贴并写入，再反向操作一次。复制时自动保存本机地址，粘贴时自动写入对端地址并检查连接。
     </p>
     <n-form label-placement="top" size="small" :disabled="busy || !loaded" :show-feedback="false">
       <n-form-item label="本机名称" class="mb-3">
@@ -150,12 +174,12 @@ onMounted(loadSettings)
       </n-form-item>
     </n-form>
     <p v-if="incomingPeerName" class="text-sm mb-3">即将添加对端：{{ incomingPeerName }}</p>
-    <div class="flex gap-2 mb-3">
-      <n-button size="small" :disabled="busy || !loaded" @click="runAction('generate')">
-        生成并复制本机配对码
+    <div class="flex flex-wrap gap-2 mb-3">
+      <n-button size="small" :disabled="busy || !loaded" @click="ownCode && !hasChanges ? copyCode() : runAction('generate')">
+        复制本机配对码
       </n-button>
-      <n-button v-if="ownCode" size="small" :disabled="busy || hasChanges" @click="copyCode">
-        复制配对码
+      <n-button type="primary" size="small" :loading="busy" :disabled="!loaded" @click="runAction('paste')">
+        一键粘贴并写入
       </n-button>
     </div>
     <n-input v-if="ownCode" :value="ownCode" type="password" show-password-on="click" readonly aria-label="本机配对码" class="mb-3" />
@@ -171,17 +195,17 @@ onMounted(loadSettings)
     <p v-if="notice" role="status" class="mb-3 text-green-600">
       {{ notice }}
     </p>
-    <div class="flex justify-end gap-2">
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      <SyncSettingsPreview :disabled="busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" :peer-name="peerName" />
       <n-button v-if="peerName && !pairingCode.trim()" :loading="busy" :disabled="!loaded || hasChanges" @click="runAction('test')">
         重新检查连接
       </n-button>
       <n-button v-if="peerName && hasChanges && !pairingCode.trim()" :loading="busy" :disabled="!loaded" @click="runAction('save')">
         保存修改
       </n-button>
-      <n-button type="primary" :loading="busy" :disabled="!loaded || !pairingCode.trim()" @click="runAction('pair')">
-        配对并连接
+      <n-button v-if="pairingCode.trim()" type="primary" :loading="busy" :disabled="!loaded" @click="runAction('pair')">
+        写入并连接
       </n-button>
     </div>
-    <SyncSettingsPreview :disabled="busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" :peer-name="peerName" />
   </section>
 </template>

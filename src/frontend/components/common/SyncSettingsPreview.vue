@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
+import { NCheckboxGroup } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{ disabled: boolean, peerName: string | null }>()
@@ -19,7 +20,7 @@ interface Preview {
   warnings: string[]
 }
 interface Result { category: string, success: boolean, message: string }
-const expanded = ref(false)
+const showModal = ref(false)
 const selected = ref<string[]>(['appearance'])
 const preview = ref<Preview | null>(null)
 const acknowledged = ref(false)
@@ -30,10 +31,15 @@ const canPreview = computed(() => !props.disabled && !busy.value && selected.val
 const name = (id: string) => categories.find(([key]) => key === id)?.[1] || id
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 
-watch(selected, () => { preview.value = null; acknowledged.value = false; results.value = [] }, { deep: true })
+watch(selected, () => { preview.value = null; acknowledged.value = false; results.value = []; error.value = '' }, { deep: true })
 watch(() => props.peerName, () => { preview.value = null; acknowledged.value = false })
+watch(showModal, (show) => {
+  if (!show) { preview.value = null; acknowledged.value = false; error.value = ''; results.value = [] }
+})
 
 async function loadPreview() {
+  if (!canPreview.value)
+    return
   busy.value = true
   error.value = ''
   preview.value = null
@@ -45,7 +51,7 @@ async function loadPreview() {
 }
 
 async function apply() {
-  if (!preview.value || !acknowledged.value || busy.value)
+  if (props.disabled || !preview.value || !acknowledged.value || busy.value)
     return
   busy.value = true
   error.value = ''
@@ -59,21 +65,31 @@ async function apply() {
 </script>
 
 <template>
-  <div class="mt-5 pt-4 border-t border-current/15">
-    <n-button :disabled="busy" @click="expanded = !expanded">
-      {{ expanded ? '收起设置复制' : '从对端复制设置' }}
+  <div class="mr-auto">
+    <n-button :disabled="busy" @click="showModal = true">
+      从配对端复制设置
     </n-button>
-    <div v-if="expanded" class="mt-3">
+    <n-modal
+      v-model:show="showModal"
+      preset="card"
+      title="从配对端复制设置"
+      :bordered="false"
+      :mask-closable="!busy"
+      :close-on-esc="!busy"
+      :closable="!busy"
+      style="width: min(760px, calc(100vw - 32px)); max-height: 90vh; overflow: auto"
+    >
       <p class="mb-3 text-sm">
         将 {{ peerName || '已配对设备' }} 的勾选设置复制到本机。IP、端口、设备名称、配对信息、账户凭据、本机路径、历史和统计保留本机。
       </p>
+      <p class="mb-3 text-sm">先勾选需要的设置，再预览差异；确认警告后才会写入本机。</p>
       <n-checkbox-group v-model:value="selected" :disabled="busy">
         <div class="grid grid-cols-2 gap-2 mb-3">
           <n-checkbox v-for="[key, label] in categories" :key="key" :value="key" :label="label" />
         </div>
       </n-checkbox-group>
       <p v-if="disabled" class="mb-3 text-sm">请先添加对端并保存地址修改，再预览对端设置。</p>
-      <n-button :disabled="!canPreview" :loading="busy" @click="loadPreview">预览勾选设置</n-button>
+      <n-button :disabled="!canPreview" :loading="busy" @click="loadPreview">预览勾选设置（{{ selected.length }} 项）</n-button>
       <div v-if="preview" class="mt-3">
         <p class="mb-2">来源：{{ preview.snapshot.device_name }}（{{ preview.snapshot.platform }}）</p>
         <p v-if="!preview.differences.length" class="mb-3">勾选设置与本机一致，无需复制。</p>
@@ -100,6 +116,11 @@ async function apply() {
           {{ name(result.category) }}：{{ result.message }}
         </li>
       </ul>
-    </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <n-button :disabled="busy" @click="showModal = false">关闭</n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
