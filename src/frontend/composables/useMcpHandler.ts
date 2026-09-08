@@ -3,6 +3,8 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ref } from 'vue'
 import { clearActiveMcpFatalContext, setActiveMcpFatalContext } from '../utils/mcpFatalError'
+import { crossDeviceSendError } from './useCrossDevice'
+import { MCP_DELIVERY_FAILURE, mcpDeliveryError } from './useMcpDelivery'
 import { useNotification } from './useNotification'
 
 const MUTE_STORAGE_KEY = 'iterate.muted'
@@ -378,6 +380,8 @@ export function useMcpHandler() {
   }
 
   function resolveProjectPath(request: any): string | null {
+    if (String(request?.id || '').startsWith('cross-'))
+      return null
     const candidate = request?.project_path ?? request?.projectPath
     if (isDisplayableProjectPath(candidate)) {
       const normalized = candidate.trim()
@@ -396,6 +400,8 @@ export function useMcpHandler() {
    * 统一的MCP响应处理
    */
   async function handleMcpResponse(response: any) {
+    crossDeviceSendError.value = ''
+    mcpDeliveryError.value = ''
     const request = mcpRequest.value as any
     const resolutionKey = beginRequestResolution(request, response)
     if (!resolutionKey)
@@ -403,6 +409,7 @@ export function useMcpHandler() {
     const projectPath = resolveProjectPath(request)
     const requestId = resolveRequestId(request)
     let dismissal: ImmediateMcpDismissal | null = null
+    let submitted = false
     try {
       dismissal = await dismissMcpUiImmediately(request)
       // 通过Tauri命令发送响应并退出应用
@@ -414,6 +421,7 @@ export function useMcpHandler() {
         hasResponse: response != null,
       })
       await invoke('send_mcp_response', { response, projectPath, requestId, timelineRouteId })
+      submitted = true
       clearActiveMcpFatalContext()
       if (isMcpProcess.value) {
         await invoke('exit_app')
@@ -421,6 +429,10 @@ export function useMcpHandler() {
     }
     catch (error) {
       console.error('MCP响应处理失败:', error)
+      if (!submitted)
+        mcpDeliveryError.value = MCP_DELIVERY_FAILURE
+      if (String(requestId || '').startsWith('cross-'))
+        crossDeviceSendError.value = String(error)
       if (dismissal)
         await restoreMcpUiAfterFailure(dismissal)
     }
@@ -493,6 +505,7 @@ export function useMcpHandler() {
    * 显示MCP弹窗
    */
   async function showMcpDialog(request: any) {
+    mcpDeliveryError.value = ''
     const projectPath = resolveProjectPath(request)
     const routedRequest = await freezeConversationRouteId(request, projectPath)
     const requestId = resolveRequestId(routedRequest)

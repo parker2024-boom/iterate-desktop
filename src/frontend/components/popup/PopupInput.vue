@@ -11,6 +11,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useSortable } from '@vueuse/integrations/useSortable'
 import { useMessage } from 'naive-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { useCrossDevice } from '../../composables/useCrossDevice'
 import { GHOST_SUGGESTION_TOKEN_PATTERN, useGhostSuggestions } from '../../composables/useGhostSuggestions'
 import { useKeyboard } from '../../composables/useKeyboard'
 import { usePromptLibrary } from '../../composables/usePromptLibrary'
@@ -91,6 +92,7 @@ const userInput = ref('')
 const selectedOptions = ref<string[]>([])
 const uploadedImages = ref<string[]>([])
 const attachedFiles = ref<PopupFileAttachment[]>([])
+const { crossState } = useCrossDevice()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const activeSuggestionIndex = ref(0)
 const acceptedSuggestionToken = ref('')
@@ -195,6 +197,7 @@ const { start, stop } = useSortable(promptContainer, sortablePrompts, {
 
 // 使用键盘快捷键 composable
 const { pasteShortcut } = useKeyboard()
+const isWindows = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('WIN')
 
 const message = useMessage()
 let localFocusTimer: ReturnType<typeof setTimeout> | null = null
@@ -426,6 +429,10 @@ function extractClipboardPaths(rawText: string): string[] {
 }
 
 function addFileAttachments(files: PopupFileAttachment[]): void {
+  if (crossState.value.mirror) {
+    message.warning('跨设备镜像仅支持文本和选项，请在源设备发送附件')
+    return
+  }
   let addedCount = 0
 
   files.forEach((file) => {
@@ -443,6 +450,10 @@ function addFileAttachments(files: PopupFileAttachment[]): void {
 }
 
 async function addImagePath(path: string): Promise<boolean> {
+  if (crossState.value.mirror) {
+    message.warning('请在源设备发送附件')
+    return false
+  }
   try {
     const dataUrl = await invoke('read_file_base64', { path }) as string
     if (!uploadedImages.value.includes(dataUrl)) {
@@ -459,6 +470,10 @@ async function addImagePath(path: string): Promise<boolean> {
 }
 
 async function addAttachmentPaths(paths: string[]): Promise<void> {
+  if (crossState.value.mirror) {
+    message.warning('请在源设备发送附件')
+    return
+  }
   if (paths.length === 0)
     return
 
@@ -512,6 +527,11 @@ function handleInputPaste(event: ClipboardEvent) {
 
   const clipboardText = event.clipboardData?.getData('text') ?? ''
 
+  // A Windows path copied as text is a reply, not an attachment request.
+  // Actual image clipboard items still follow the image handling below.
+  if (isWindows && clipboardText.length > 0 && !hasImage)
+    return
+
   // `/end` starts with a slash but is a conversation command, not a file path.
   // Let the browser paste it normally; the Rust response boundary decides
   // whether it ends this interaction.
@@ -536,6 +556,10 @@ function handleInputPaste(event: ClipboardEvent) {
 }
 
 async function handleImageFiles(files: FileList | File[]): Promise<void> {
+  if (crossState.value.mirror) {
+    message.warning('跨设备镜像仅支持文本和选项')
+    return
+  }
   console.log('=== 处理图片文件 ===')
   console.log('文件数量:', files.length)
 
@@ -1855,6 +1879,10 @@ async function initializeAsyncListeners() {
         void loadCustomPrompts({ forceRefresh: true })
       }),
       listen<string>('screenshot-captured', (event) => {
+        if (crossState.value.mirror) {
+          message.warning('请在源设备发送附件')
+          return
+        }
         console.log('收到截图事件，图片数据长度:', event.payload.length)
         if (event.payload && !uploadedImages.value.includes(event.payload)) {
           uploadedImages.value.push(event.payload)
@@ -2548,7 +2576,12 @@ defineExpose({
       <!-- 图片提示区域 -->
       <div v-if="uploadedImages.length === 0 && attachedFiles.length === 0" class="text-center">
         <div class="text-xs text-on-surface-secondary">
-          💡 提示：可以在输入框中粘贴图片、Finder 复制的文件或绝对路径，也可以把文件拖进来 ({{ pasteShortcut }})
+          <template v-if="crossState.mirror">
+            跨设备镜像仅支持文本和选项；图片和文件请在源设备发送。
+          </template>
+          <template v-else>
+            💡 提示：{{ isWindows ? '粘贴的路径会作为文字保留；图片可直接粘贴，文件可拖入' : '可以在输入框中粘贴图片、Finder 复制的文件或绝对路径，也可以把文件拖进来' }} ({{ pasteShortcut }})<span v-if="crossState.enabled">（附件仅在源设备处理）</span>
+          </template>
         </div>
       </div>
     </div>

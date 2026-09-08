@@ -2,10 +2,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { useMessage } from 'naive-ui'
 import { computed, onUnmounted, ref } from 'vue'
+import CrossDeviceToggle from '../common/CrossDeviceToggle.vue'
 import IntroTab from '../tabs/IntroTab.vue'
 import McpToolsTab from '../tabs/McpToolsTab.vue'
 import PromptsTab from '../tabs/PromptsTab.vue'
 import SettingsTab from '../tabs/SettingsTab.vue'
+
+const props = defineProps<Props>()
+
+const emit = defineEmits<Emits>()
 
 interface Props {
   currentTheme: string
@@ -32,9 +37,6 @@ interface Emits {
   toggleCodexLive: []
   toggleCodexLiveMute: []
 }
-
-const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
 
 const codexLiveActive = computed(() => ['preparing', 'connecting', 'active', 'reconnecting'].includes(props.codexLivePhase))
 const codexLiveTitle = computed(() => `${props.codexLiveStatus}（${codexLiveActive.value ? '短按静音，长按 5 秒结束' : '长按 5 秒启动'}）`)
@@ -153,6 +155,7 @@ function testPopup() {
             <h1 class="text-4xl font-medium text-white">
               iterate
             </h1>
+            <CrossDeviceToggle />
             <n-button
               size="small"
               type="tertiary"

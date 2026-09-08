@@ -769,6 +769,11 @@ pub fn handle_cli_args() -> Result<()> {
         return handle_relay_mac_client_mode(&flags, &options);
     }
 
+    if flags.contains(&"--cross-device-daemon".to_string()) {
+        let port = options.get("--port").and_then(|p| p.parse::<u16>().ok()).unwrap_or(5540);
+        return crate::cross_device::run_daemon(port);
+    }
+
     // 检查是否是 --serve 模式（HTTP 服务器模式，类似 Infinite WF）
     if flags.contains(&"--serve".to_string()) {
         let port = options
@@ -1148,6 +1153,7 @@ fn handle_mcp_request(request_file: &str) -> Result<()> {
 
 /// 处理 --serve 模式（HTTP 服务器模式）
 fn handle_serve_mode(port: u16, workspace: Option<String>) -> Result<()> {
+    crate::cross_device::transport::start_if_configured();
     #[cfg(target_os = "windows")]
     if crate::app::windows_lifecycle::is_manually_stopped() {
         anyhow::bail!(crate::app::windows_lifecycle::MANUALLY_STOPPED_MESSAGE);
@@ -1280,7 +1286,9 @@ fn handle_serve_mode(port: u16, workspace: Option<String>) -> Result<()> {
                     if let Some(response_tx) = request.response_tx.take() {
                         // 启动 GUI 处理这个请求
                         let response = handle_dialog_request(&request).await;
-                        let _ = response_tx.send(response);
+                        if response_tx.send(response).is_err() {
+                            if let Some(delivery) = &request.delivery { delivery.failed(); }
+                        }
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
@@ -1365,7 +1373,7 @@ fn clean_dialog_dismissal_response(
 /// 处理单个对话请求（启动 GUI）
 async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
     // 创建临时请求文件
-    let request_id = format!("serve-{}", chrono::Utc::now().timestamp_millis());
+    let request_id = format!("serve-{}-{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
     let parent_request_id = request.request_id.clone();
     emit_interaction_phase(request, InteractionPhase::StartingGui, &request_id);
     instance_debug_log(
@@ -1418,7 +1426,15 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
             ..Default::default()
         };
     }
-    let response_route_file = register_serve_response_route(&request_id, request, &response_file);
+    let cross_registration = crate::cross_device::register(&mcp_request, &request_file, &response_file).await;
+    let delivery = request.delivery.as_ref().filter(|_| cross_registration.is_none());
+    // Legacy bridge writers do not understand arbitration. Do not publish a
+    // directly writable response-file route for a cross-device request.
+    let response_route_file = if cross_registration.is_none() {
+        register_serve_response_route(&request_id, request, &response_file)
+    } else {
+        serve_response_route_file(&request_id)
+    };
 
     // 设置环境变量
     std::env::set_var(
@@ -1436,6 +1452,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
     std::env::set_var("ITERATE_STANDALONE_MODE", "1");
 
     let cleanup_temp_files = || {
+        if let Some(registration) = &cross_registration { registration.finish(); }
         let _ = std::fs::remove_file(&ready_file);
         let _ = std::fs::remove_file(&response_file);
         let _ = std::fs::remove_file(&request_file);
@@ -1457,6 +1474,8 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
         ),
     );
     let child = std::process::Command::new(&exe_path)
+        .env("ITERATE_DELIVERY_FILE", delivery.map(|d| d.path.as_os_str()).unwrap_or_default())
+        .env("ITERATE_CROSS_DEVICE_SOURCE", cross_registration.as_ref().map(|r| r.key()).unwrap_or(""))
         .env(
             "ITERATE_MCP_REQUEST_FILE",
             request_file.to_string_lossy().to_string(),
@@ -1491,6 +1510,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
             let mut wait_result = None;
 
             loop {
+                if let Some(registration) = &cross_registration { registration.renew(); }
                 if ready_file.exists() || response_file.exists() {
                     let ready_file_exists = ready_file.exists();
                     let response_file_exists = response_file.exists();
@@ -1515,7 +1535,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
 
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        wait_result = Some(Ok(status));
+                        wait_result = Some(Ok(Some(status)));
                         instance_debug_log(
                             "[serve-request-child-exit-before-ready]",
                             format!(
@@ -1585,12 +1605,18 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
             let wait_result = match wait_result {
                 Some(result) => result,
                 None => loop {
+                    if let Some(registration) = &cross_registration { registration.renew(); }
+                    if delivery.is_some_and(|d| d.disconnected()) {
+                        break Ok(None);
+                    }
                     if response_file.exists() {
                         emit_interaction_phase(request, InteractionPhase::Responded, &request_id);
                         instance_debug_log(
                             "[serve-request-response-file-observed]",
                             format!("request_id={}, child_pid={}", request_id, child.id()),
                         );
+                        // The hidden window awaits local handoff and can still recover.
+                        if delivery.is_some() { break Ok(None); }
                         break match kill_child_best_effort(
                             &mut child,
                             &request_id,
@@ -1598,7 +1624,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
                         )
                         .await
                         {
-                            Some(status) => Ok(status),
+                            Some(status) => Ok(Some(status)),
                             None => Err(std::io::Error::new(
                                 std::io::ErrorKind::TimedOut,
                                 "GUI child did not exit after kill",
@@ -1607,7 +1633,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
                     }
 
                     match child.try_wait() {
-                        Ok(Some(status)) => break Ok(status),
+                        Ok(Some(status)) => break Ok(Some(status)),
                         Ok(None) => {
                             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                         }
@@ -1615,12 +1641,21 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
                     }
                 },
             };
+            if matches!(&wait_result, Ok(None)) {
+                // Reap the retained GUI after it exits; never kill a failure window.
+                let retained_delivery = delivery.cloned();
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                    drop(retained_delivery);
+                });
+            }
             instance_debug_log(
                 "[serve-request-child-exit]",
                 format!("request_id={}, wait_result={:?}", request_id, wait_result),
             );
 
             // 读取响应文件
+            if let Some(registration) = &cross_registration { registration.recover_accepted_response(); }
             let response_file_exists = response_file.exists();
             let ready_file_exists = ready_file.exists();
             if response_file_exists {
@@ -1770,7 +1805,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
             }
 
             let child_exited_successfully =
-                wait_result.as_ref().is_ok_and(|status| status.success());
+                wait_result.as_ref().is_ok_and(|status| status.as_ref().is_some_and(|s| s.success()));
             if let Some(dismissal_response) = clean_dialog_dismissal_response(
                 ready_file_exists,
                 response_file_exists,
@@ -1811,6 +1846,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
                 "[serve-request-spawn-failed]",
                 format!("request_id={}, error={}", request_id, e),
             );
+            cleanup_temp_files();
             emit_interaction_phase(request, InteractionPhase::Failed, &request_id);
             DialogResponse {
                 keep_going: false,

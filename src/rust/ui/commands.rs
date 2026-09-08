@@ -733,6 +733,14 @@ pub async fn send_mcp_response(
     state: State<'_, AppState>,
     conversation_manager: State<'_, Arc<ConversationManager>>,
 ) -> Result<(), String> {
+    // Cross-device requests arbitrate before conversation/checkpoint side effects.
+    let closing = response.as_str() == Some("CANCELLED")
+        || response.pointer("/metadata/source").and_then(serde_json::Value::as_str) == Some("popup_closed");
+    if !closing { crate::delivery::ensure_connected()?; }
+    if crate::cross_device::submit(&response).await? {
+        return Ok(());
+    }
+    let cross_finalize_guard = crate::cross_device::source_finalize_guard()?;
     let normalized_project_path = normalize_non_empty(project_path.clone());
     let normalized_request_id = normalize_non_empty(request_id.clone());
     let normalized_timeline_route_id = normalize_non_empty(timeline_route_id.clone());
@@ -877,9 +885,14 @@ pub async fn send_mcp_response(
 
         // 如果设置了 ITERATE_RESPONSE_FILE，同时写入文件（--serve 模式需要）
         if let Ok(response_file) = std::env::var("ITERATE_RESPONSE_FILE") {
-            std::fs::write(&response_file, &response_str)
-                .map_err(|e| format!("写入响应文件失败: {}", e))?;
+            if cross_finalize_guard.is_some() {
+                crate::cross_device::publish_source_response(std::path::Path::new(&response_file), &response)?;
+            } else {
+                std::fs::write(&response_file, &response_str)
+                    .map_err(|e| format!("写入响应文件失败: {}", e))?;
+            }
         }
+        if !closing { crate::delivery::wait_for_handoff().await?; }
         // 对话已结束，通知主进程清除 MCP_STATE_CACHE（子进程内存与主进程隔离）
         // 这里必须等待请求返回；standalone 子进程退出很快，fire-and-forget 会导致清理丢失。
         if let Some(ref rid) = effective_request_id {
@@ -4318,6 +4331,19 @@ fn normalize_local_file_path(path: &str) -> String {
         decoded = next;
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        let bytes = decoded.as_bytes();
+        // URL-style /C:/... is not a valid Win32 absolute filename.
+        if bytes.len() >= 4
+            && matches!(bytes[0], b'/' | b'\\')
+            && bytes[1].is_ascii_alphabetic()
+            && bytes[2] == b':'
+            && matches!(bytes[3], b'/' | b'\\')
+        {
+            decoded.remove(0);
+        }
+    }
     decoded
 }
 
@@ -4566,6 +4592,22 @@ mod local_file_path_tests {
         normalize_local_file_path, read_file_base64, resolve_confirmed_external_file_target,
         resolve_local_open_path, resolve_local_open_target,
     };
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn resolves_windows_url_style_drive_paths() {
+        let root = std::env::temp_dir().join(format!("iterate-drive-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("中文 screenshot.png");
+        std::fs::write(&file, b"path normalization fixture").unwrap();
+        let drive_path = file.to_string_lossy().replace('\\', "/");
+        for input in [drive_path.clone(), format!("/{drive_path}"), format!("file:///{drive_path}")] {
+            let target = resolve_local_open_target(&input, &root.to_string_lossy()).unwrap();
+            assert_eq!(target.path, file.canonicalize().unwrap());
+        }
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
 
     #[test]
     fn normalizes_encoded_local_image_paths() {

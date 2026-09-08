@@ -591,6 +591,15 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
             should_stop: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
+            crate::delivery::get_mcp_delivery_status,
+            crate::cross_device::get_cross_device_status,
+            crate::cross_device::settings_sync::settings_sync_export,
+            crate::cross_device::settings_sync::settings_sync_preview,
+            crate::cross_device::set_cross_device_enabled,
+            crate::cross_device::transport::get_cross_device_config,
+            crate::cross_device::transport::generate_cross_device_pairing,
+            crate::cross_device::transport::save_cross_device_config,
+            crate::cross_device::transport::test_cross_device_connection,
             // 基础应用命令
             crate::bridge::auth::get_bridge_desktop_token,
             get_app_info,
@@ -904,6 +913,11 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
 
 /// 运行Tauri应用
 pub fn run_tauri_app() {
+    crate::cross_device::transport::start_if_configured();
+    let _cross_mirror_guard = match crate::cross_device::mirror_process_guard() {
+        Ok(guard) => guard,
+        Err(error) => { eprintln!("{error}"); return; }
+    };
     install_android_rustls_crypto_provider();
 
     let args: Vec<String> = std::env::args().collect();

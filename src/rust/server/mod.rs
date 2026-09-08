@@ -217,6 +217,7 @@ fn active_interaction_matches(state: &ServerState, request_id: &str, workspace: 
 }
 
 struct DialogCleanupGuard {
+    delivery: Arc<crate::delivery::Delivery>,
     state: Arc<Mutex<ServerState>>,
     request_id: String,
     workspace: String,
@@ -230,8 +231,10 @@ impl DialogCleanupGuard {
         request_id: String,
         workspace: String,
         lifecycle_task: JoinHandle<()>,
+        delivery: Arc<crate::delivery::Delivery>,
     ) -> Self {
         Self {
+            delivery,
             state,
             request_id,
             workspace,
@@ -247,6 +250,7 @@ impl DialogCleanupGuard {
     }
 
     fn disarm(&mut self) {
+        self.delivery.returned();
         self.abort_lifecycle();
         self.active = false;
     }
@@ -257,7 +261,7 @@ impl Drop for DialogCleanupGuard {
         if !self.active {
             return;
         }
-
+        self.delivery.failed();
         self.abort_lifecycle();
         let state = Arc::clone(&self.state);
         let request_id = self.request_id.clone();
@@ -281,6 +285,8 @@ impl Drop for DialogCleanupGuard {
 /// 对话请求
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DialogRequest {
+    #[serde(skip)]
+    pub delivery: Option<Arc<crate::delivery::Delivery>>,
     /// MCP 父请求 ID，用于跨层关联日志
     #[serde(default)]
     pub request_id: String,
@@ -1059,6 +1065,11 @@ async fn handle_dialog(
     }
 
     let (response_tx, response_rx) = oneshot::channel();
+    let delivery = match crate::delivery::Delivery::new() {
+        Ok(delivery) => Arc::new(delivery),
+        Err(error) => return json_response(&DialogResponse { error: Some(error.to_string()), ..Default::default() }),
+    };
+    request.delivery = Some(Arc::clone(&delivery));
     request.response_tx = Some(response_tx);
     let (lifecycle_tx, mut lifecycle_rx) = mpsc::unbounded_channel();
     request.lifecycle_tx = Some(lifecycle_tx);
@@ -1082,6 +1093,7 @@ async fn handle_dialog(
         request_id_for_log.clone(),
         workspace_for_log.clone(),
         lifecycle_task,
+        delivery,
     );
 
     // 设置占用状态

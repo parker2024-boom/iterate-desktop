@@ -24,6 +24,7 @@ import HtmlArtifactRenderer from './popup/HtmlArtifactRenderer.vue'
 import McpPopup from './popup/McpPopup.vue'
 import PopupHeader from './popup/PopupHeader.vue'
 import MobileConnectionWizard from './settings/MobileConnectionWizard.vue'
+import SettingsTab from './tabs/SettingsTab.vue'
 
 interface AppConfig {
   theme: string
@@ -1749,12 +1750,16 @@ onUnmounted(async () => {
       <!-- 设置界面 -->
       <div
         v-if="showPopupSettings"
-        class="flex-1 overflow-y-auto scrollbar-thin"
+        class="flex-1 overflow-y-auto scrollbar-thin p-4"
       >
-        <LayoutWrapper
-          :app-config="props.appConfig"
-          :codex-live-phase="globalCodexLivePhase"
-          :codex-live-status="globalCodexLiveStatus"
+        <SettingsTab
+          :current-theme="props.appConfig.theme"
+          :always-on-top="props.appConfig.window.alwaysOnTop"
+          :audio-notification-enabled="props.appConfig.audio.enabled"
+          :audio-url="props.appConfig.audio.url"
+          :window-width="props.appConfig.window.width"
+          :window-height="props.appConfig.window.height"
+          :fixed-window-size="props.appConfig.window.fixed"
           @theme-change="$emit('themeChange', $event)"
           @toggle-always-on-top="$emit('toggleAlwaysOnTop')"
           @toggle-audio-notification="$emit('toggleAudioNotification')"
@@ -1763,8 +1768,6 @@ onUnmounted(async () => {
           @stop-audio="$emit('stopAudio')"
           @test-audio-error="$emit('testAudioError', $event)"
           @update-window-size="$emit('updateWindowSize', $event)"
-          @toggle-codex-live="handleToggleCodexLive"
-          @toggle-codex-live-mute="handleToggleCodexLiveMute"
         />
       </div>
 
