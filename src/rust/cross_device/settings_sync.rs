@@ -577,6 +577,10 @@ fn merge_entries(category: Category, current: &mut Vec<Value>, incoming: &Value,
             row.insert((*key).into(), json!(value));
         }
         match category {
+            Category::PromptTemplates => {
+                row.insert("created_at".into(), json!(now));
+                row.insert("updated_at".into(), json!(now));
+            }
             Category::GhostSuggestions => {
                 crate::ghost_suggestions::validate_key(row["key"].as_str().unwrap())?;
                 row.insert("created_at".into(), json!(now));
