@@ -4799,12 +4799,22 @@ mod local_file_path_tests {
 
 /// 保存提示词库到文件（供 Bridge Server API 读取）
 #[tauri::command]
-pub fn save_prompt_library_file(content: String) -> Result<(), String> {
+pub fn save_prompt_library_file(content: String, expected_items: Option<serde_json::Value>) -> Result<(), String> {
+    let _sync_lock = crate::cross_device::settings_sync::content_lock()?;
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let dir = std::path::Path::new(&home).join(".cunzhi");
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败: {}", e))?;
     let path = dir.join("prompt-library.json");
-    std::fs::write(&path, &content).map_err(|e| format!("写入失败: {}", e))
+    let current: serde_json::Value = serde_json::from_str(&load_prompt_library_file()?).map_err(|e| e.to_string())?;
+    if expected_items.as_ref() != Some(&current["items"]) {
+        return Err("提示词库已改变，请重新加载后重试；本机内容未覆盖".into());
+    }
+    let value: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut temp = tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
+    serde_json::to_writer_pretty(&mut temp, &value).map_err(|e| e.to_string())?;
+    temp.as_file().sync_all().map_err(|e| e.to_string())?;
+    temp.persist(path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// 读取提示词库文件（跨进程共享源）
@@ -4887,12 +4897,13 @@ pub fn get_speech_muscle_memory_entries() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn save_speech_muscle_memory_entries(
     entries: serde_json::Value,
+    expected_entries: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let array = entries
         .as_array()
         .cloned()
         .ok_or_else(|| "entries 必须是数组".to_string())?;
-    let saved = speech_memory::save_entries(array)?;
+    let saved = speech_memory::save_entries_checked(array, expected_entries)?;
     Ok(serde_json::Value::Array(saved))
 }
 

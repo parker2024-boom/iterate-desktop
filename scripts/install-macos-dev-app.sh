@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 APP_NAME="${CUNZHI_MACOS_APP_NAME:-iterate}"
 SOURCE_APP="${CUNZHI_MACOS_SOURCE_APP:-${REPO_ROOT}/target/release/bundle/macos/${APP_NAME}.app}"
 DEST_APP="${CUNZHI_MACOS_DEST_APP:-/Applications/${APP_NAME}.app}"
-SIGN_IDENTITY="${CUNZHI_MACOS_DEV_SIGN_IDENTITY:-}"
+SIGN_IDENTITY="${CUNZHI_MACOS_DEV_SIGN_IDENTITY:--}"
 ENTITLEMENTS_PATH="${CUNZHI_MACOS_ENTITLEMENTS_PATH:-${REPO_ROOT}/Entitlements.plist}"
 SIGN_TIMESTAMP="${CUNZHI_MACOS_CODESIGN_TIMESTAMP:-}"
 SOURCE_RECEIPT_TOOL="${REPO_ROOT}/scripts/macos-source-receipt.mjs"
@@ -41,7 +41,7 @@ Options:
   -h, --help                Show this help
 
 Environment:
-  CUNZHI_MACOS_DEV_SIGN_IDENTITY   codesign identity for local installs (default: auto-detect)
+  CUNZHI_MACOS_DEV_SIGN_IDENTITY   codesign identity for local installs (default: ad-hoc, no keychain)
   CUNZHI_MACOS_ALLOW_ADHOC_SIGN    set to 1 to allow fallback ad-hoc signing
   CUNZHI_MACOS_ENTITLEMENTS_PATH   app entitlements plist (default: Entitlements.plist)
   CUNZHI_MACOS_CODESIGN_TIMESTAMP  timestamp mode: default, none, or timestamp URL
@@ -262,7 +262,7 @@ bundle_has_running_code() {
   local pids
 
   bundle_path="$(cd "$(dirname "${bundle}")" && pwd -P)/$(basename "${bundle}")"
-  pids="$({ pgrep -x "${APP_NAME}" 2>/dev/null || true; pgrep -x "mcp-server" 2>/dev/null || true; } | sort -u)"
+  pids="$({ pgrep -x "${APP_NAME}" 2>/dev/null || true; pgrep -x "iterate-real" 2>/dev/null || true; pgrep -x "mcp-server" 2>/dev/null || true; } | sort -u)"
   if [[ -z "${pids}" ]]; then
     return 1
   fi
@@ -295,6 +295,50 @@ cleanup_retired_apps() {
   rmdir "${retired_root}" 2>/dev/null || true
 }
 
+preserve_installed_profile() {
+  local staged="$1"
+  # Read the old wrapper as data. Never execute it or copy its application flags.
+  /usr/bin/python3 - "${DEST_APP}" "${staged}" "${APP_NAME}" <<'PY'
+import json, pathlib, plistlib, shlex, sys
+old, staged = map(pathlib.Path, sys.argv[1:3])
+binary = sys.argv[3]
+profile = old / 'Contents/Resources/iterate-profile.json'
+allowed = {'ITERATE_CONFIG_DIR', 'ITERATE_CROSS_DEVICE_DIR', 'ITERATE_CROSS_DEVICE_NAME', 'ITERATE_CONVERSATION_STATE_FILE'}
+values = {}
+legacy = False
+if profile.is_file():
+    values = json.loads(profile.read_text())
+elif (old / 'Contents/Info.plist').is_file():
+    info = plistlib.loads((old / 'Contents/Info.plist').read_bytes())
+    legacy = info.get('CFBundleExecutable') == 'launcher' and info.get('CFBundleIdentifier') == 'dev.iterate.cross-device'
+    if legacy:
+        for line in (old / 'Contents/MacOS/launcher').read_text().splitlines():
+            parts = shlex.split(line)
+            if len(parts) == 2 and parts[0] == 'export' and '=' in parts[1]:
+                key, value = parts[1].split('=', 1)
+                if key in allowed:
+                    values[key] = value
+        if not {'ITERATE_CONFIG_DIR', 'ITERATE_CROSS_DEVICE_DIR'} <= values.keys():
+            raise SystemExit('Cannot preserve the installed pairing profile; replacement stopped')
+if values:
+    if not isinstance(values, dict) or not values.keys() <= allowed or not all(isinstance(v, str) and v for v in values.values()):
+        raise SystemExit('Invalid installed profile; replacement stopped')
+    target = staged / 'Contents/Resources/iterate-profile.json'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(values, ensure_ascii=False))
+    # Compatibility for an existing LaunchAgent; Finder uses the native entry.
+    launcher = staged / 'Contents/MacOS/launcher'
+    launcher.write_text('#!/bin/sh\nexec "$(dirname "$0")/' + binary + '" "$@"\n')
+    launcher.chmod(0o755)
+info_path = staged / 'Contents/Info.plist'
+info = plistlib.loads(info_path.read_bytes())
+info['CFBundleExecutable'] = binary
+info['LSUIElement'] = False
+info.pop('LSBackgroundOnly', None)
+info_path.write_bytes(plistlib.dumps(info))
+PY
+}
+
 copy_app() {
   local dest_parent
   local retired_app=""
@@ -319,6 +363,7 @@ copy_app() {
   fi
 
   if [[ -e "${DEST_APP}" ]]; then
+    preserve_installed_profile "${staging_app}"
     mkdir -p "${retired_root}"
     retired_app="${retired_root}/${APP_NAME}-$(date +%Y%m%d%H%M%S)-$$.app"
     info "Retiring installed bundle before replacement: ${DEST_APP} -> ${retired_app}"
@@ -386,9 +431,8 @@ sign_app() {
     fi
   else
     if [[ "${identity}" == "-" ]]; then
-      [[ "${CUNZHI_MACOS_ALLOW_ADHOC_SIGN:-0}" == "1" ]] || die "ad-hoc signing is disabled by default; set CUNZHI_MACOS_ALLOW_ADHOC_SIGN=1 to use identity '-'"
       timestamp_args=(--timestamp=none)
-      info "Using explicit ad-hoc signing because CUNZHI_MACOS_ALLOW_ADHOC_SIGN=1"
+      info "Using local ad-hoc signing without keychain access"
     else
       while IFS= read -r timestamp_arg; do
         timestamp_args+=("${timestamp_arg}")
@@ -401,6 +445,7 @@ sign_app() {
   info "Signing installed app binaries with identity: ${identity}"
   for binary_path in "${DEST_APP}/Contents/MacOS"/*; do
     [[ -f "${binary_path}" ]] || continue
+    [[ "$(file -b "${binary_path}")" == *Mach-O* ]] || continue
     if [[ "$(basename "${binary_path}")" == "mcp-server" ]]; then
       codesign --force --options runtime "${timestamp_args[@]}" \
         --identifier "com.kexin94yyds.iterate.mcp-server" \

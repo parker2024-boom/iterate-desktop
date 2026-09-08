@@ -1,5 +1,4 @@
-//! Read-only settings exchange. Every transmitted field is explicitly selected.
-//! Preview is an immutable in-memory document; applying it is a separate step.
+//! Selected settings exchange with backend-owned previews and explicit local apply.
 use super::{transport, Result};
 use crate::config::AppConfig;
 use serde::{Deserialize, Serialize};
@@ -449,7 +448,7 @@ fn preview(
 ) -> Result<Preview> {
     let categories: Vec<_> = snapshot.categories.keys().copied().collect();
     validate_snapshot(&snapshot, &categories)?;
-    let differences = snapshot
+    let mut differences: Vec<Difference> = snapshot
         .categories
         .iter()
         .filter_map(|(&category, incoming)| {
@@ -462,6 +461,18 @@ fn preview(
             })
         })
         .collect();
+    for difference in &mut differences {
+        let opposite = match difference.category {
+            Category::PromptTemplates => Category::PromptLibrary,
+            Category::PromptLibrary => Category::PromptTemplates,
+            _ => continue,
+        };
+        if let Some(other) = local.get(&opposite) {
+            let other = if opposite == Category::PromptTemplates { &other["prompts"] } else { other };
+            let incoming = if difference.category == Category::PromptTemplates { &difference.incoming["prompts"] } else { &difference.incoming };
+            difference.conflicts.extend(conflicts(Category::PromptLibrary, other, incoming));
+        }
+    }
     let mut warnings=vec!["仅从对端导入本机；IP、凭据、配对、本机路径及历史保留本机。内容冲突保留本机，不删除本机独有项。".into()];
     for category in categories {
         use Category::*;
@@ -480,7 +491,7 @@ fn preview(
             McpTools => "将改变 MCP 工具的可用状态。",
             AutoCheckpoint => "自动检查点开启后会按现有机制创建 Git 检查点。",
             SpeechReplacements | SpeechCorrections => {
-                "不复制训练或使用统计；新规则未训练，须在本机训练后才能按现有机制启用。"
+                "不复制训练或使用统计；新规则训练次数为 0，语音替换规则须在本机训练至少 4 次后才生效。"
             }
             SpeechVocabulary => "只导入词汇内容，不复制学习统计。",
             _ => continue,
@@ -519,10 +530,235 @@ pub async fn settings_sync_preview(categories: Vec<Category>) -> Result<Preview>
     if transport::route_key()? != binding {
         return Err("配对或连接已改变，请重新预览".into());
     }
-    let local = local_categories(&categories)?;
+    let mut local_selections = categories.clone();
+    if categories.iter().any(|c| matches!(c, Category::PromptTemplates | Category::PromptLibrary)) {
+        local_selections.extend([Category::PromptTemplates, Category::PromptLibrary]);
+        local_selections.sort();
+        local_selections.dedup();
+    }
+    let local = local_categories(&local_selections)?;
     let result = preview(snapshot, local, binding)?;
     retain_preview(&result)?;
     Ok(result)
+}
+
+/// Shared by content writers and imports; all read/modify/write work belongs
+/// inside this lock, including the comparison against the preview.
+pub(crate) fn content_lock() -> Result<std::fs::File> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    super::lock(&Path::new(&home).join(".cunzhi"), "settings-content.lock")
+}
+
+#[derive(Serialize)]
+pub struct ApplyResult {
+    pub category: Category,
+    pub success: bool,
+    pub message: String,
+}
+
+fn matches_entry(category: Category, a: &Value, b: &Value) -> bool {
+    conflict_keys(category).iter().any(|key| {
+        let left = a.get(*key).and_then(Value::as_str).unwrap_or("").trim();
+        let right = b.get(*key).and_then(Value::as_str).unwrap_or("").trim();
+        !left.is_empty() && left == right
+    })
+}
+
+fn merge_entries(category: Category, current: &mut Vec<Value>, incoming: &Value, other: &[Value]) -> Result<usize> {
+    let mut added = 0;
+    let now = chrono::Utc::now().to_rfc3339();
+    for entry in incoming.as_array().ok_or("内容必须是数组")? {
+        if current.iter().chain(other).any(|old| matches_entry(category, old, entry)) { continue; }
+        let mut entry = entry.clone();
+        let row = entry.as_object_mut().ok_or("条目无效")?;
+        for key in conflict_keys(category) {
+            let value = row.get(*key).and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if value.is_empty() { return Err(format!("条目 {key} 不能为空")); }
+            row.insert((*key).into(), json!(value));
+        }
+        match category {
+            Category::GhostSuggestions => {
+                crate::ghost_suggestions::validate_key(row["key"].as_str().unwrap())?;
+                row.insert("created_at".into(), json!(now));
+                row.insert("updated_at".into(), json!(now));
+                serde_json::from_value::<crate::ghost_suggestions::GhostSuggestion>(Value::Object(row.clone()))
+                    .map_err(|e| format!("幽灵词条无效：{e}"))?;
+            }
+            Category::SpeechReplacements | Category::SpeechCorrections => {
+                row.insert("trainingCount".into(), json!(0));
+                row.insert("createdAt".into(), json!(now));
+                row.insert("updatedAt".into(), json!(now));
+            }
+            Category::SpeechVocabulary => {
+                if row["term"].as_str().unwrap().chars().count() > 48 { return Err("语音词汇最多 48 个字符".into()); }
+                row.insert("count".into(), json!(0));
+                row.insert("first_seen_at".into(), json!(now));
+                row.insert("last_seen_at".into(), json!(now));
+            }
+            _ => {}
+        }
+        current.push(entry);
+        added += 1;
+    }
+    Ok(added)
+}
+
+fn update_config_category(config: &mut AppConfig, category: Category, incoming: &Value) -> Result<()> {
+    use Category::*;
+    let mut value = serde_json::to_value(&*config).map_err(|e| e.to_string())?;
+    let section = match category {
+        Appearance => {
+            value["ui_config"]["theme"] = incoming["theme"].clone();
+            for key in ["font_family", "font_size"] {
+                value["ui_config"]["font_config"][key] = incoming[key].clone();
+            }
+            None
+        }
+        Window => {
+            value["ui_config"]["always_on_top"] = incoming["always_on_top"].clone();
+            for (key, field) in incoming.as_object().ok_or("窗口设置无效")? {
+                if key != "always_on_top" { value["ui_config"]["window_config"][key] = field.clone(); }
+            }
+            None
+        }
+        Audio => Some("audio_config"),
+        Reply | AutoContinue | ClipboardBackup => Some("reply_config"),
+        AutoCheckpoint => Some("checkpoint_config"),
+        Shortcuts => Some("shortcut_config"),
+        McpTools => Some("mcp_config"),
+        PromptTemplates => {
+            let mut entries = value["custom_prompt_config"]["prompts"].as_array().cloned().ok_or("本机模板无效")?;
+            let others = local_categories(&[PromptLibrary])?;
+            merge_entries(category, &mut entries, &incoming["prompts"], others[&PromptLibrary].as_array().ok_or("本机词库无效")?)?;
+            value["custom_prompt_config"]["prompts"] = json!(entries);
+            value["custom_prompt_config"]["enabled"] = incoming["enabled"].clone();
+            value["custom_prompt_config"]["max_prompts"] = incoming["max_prompts"].clone();
+            None
+        }
+        _ => return Err("未知配置分类".into()),
+    };
+    if let Some(section) = section {
+        for (key, field) in incoming.as_object().ok_or("配置分类无效")? {
+            if category == McpTools && key == "tools" {
+                for (id, enabled) in field.as_object().ok_or("工具配置无效")? {
+                    value[section]["tools"][id] = enabled.clone();
+                }
+            } else { value[section][key] = field.clone(); }
+        }
+    }
+    let next: AppConfig = serde_json::from_value(value).map_err(|e| format!("设置值无效：{e}"))?;
+    if category == Appearance {
+        if !["light", "dark"].contains(&next.ui_config.theme.as_str())
+            || !crate::constants::font::FONT_FAMILIES.iter().any(|(id, _, _)| *id == next.ui_config.font_config.font_family && *id != "custom")
+            || !crate::constants::font::FONT_SIZES.iter().any(|(id, _, _)| *id == next.ui_config.font_config.font_size) {
+            return Err("对端主题或字体选项不受本机支持".into());
+        }
+    }
+    if category == Window {
+        let w = &next.ui_config.window_config;
+        if ![w.min_width,w.min_height,w.max_width,w.max_height,w.fixed_width,w.fixed_height,w.free_width,w.free_height].iter().all(|v| v.is_finite() && *v > 0.0)
+            || w.min_width > w.max_width || w.min_height > w.max_height {
+            return Err("对端窗口尺寸无效".into());
+        }
+    }
+    *config = next;
+    Ok(())
+}
+
+fn apply_content(category: Category, incoming: &Value) -> Result<String> {
+    use Category::*;
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let (path, key, empty) = match category {
+        PromptLibrary => (Path::new(&home).join(".cunzhi/prompt-library.json"), Some("items"), json!({"version":1,"items":[]})),
+        GhostSuggestions => (crate::ghost_suggestions::ghost_suggestions_path(), Some("suggestions"), json!({"version":1,"defaultSeedVersion":0,"suggestions":[]})),
+        SpeechReplacements => (crate::speech_memory::speech_memory_path(), None, json!([])),
+        SpeechCorrections => (crate::speech_memory::speech_correction_memory_path(), None, json!([])),
+        SpeechVocabulary => (crate::speech_memory::speech_vocabulary_path(), Some("entries"), json!({"version":1,"entries":[]})),
+        _ => return Err("未知内容分类".into()),
+    };
+    let mut document = read_optional(&path, empty)?;
+    let mut entries = match key { Some(key) => &document[key], None => &document }.as_array().cloned().ok_or("本机内容无效")?;
+    let others = if category == PromptLibrary {
+        let local = local_categories(&[PromptTemplates])?;
+        local[&PromptTemplates]["prompts"].as_array().cloned().ok_or("本机模板无效")?
+    } else { vec![] };
+    let added = merge_entries(category, &mut entries, incoming, &others)?;
+    if category == SpeechVocabulary && entries.len() > 500 { return Err("合并后语音词库超过 500 条，请减少来源词汇".into()); }
+    if added > 0 {
+        if let Some(key) = key {
+            document[key] = json!(entries);
+            document[if category == SpeechVocabulary { "updated_at" } else { "updatedAt" }] = json!(chrono::Utc::now().to_rfc3339());
+        } else { document = json!(entries); }
+        super::atomic_json(&path, &document)?;
+    }
+    Ok(format!("已新增 {added} 条；本机已有或冲突条目保留"))
+}
+
+#[tauri::command]
+pub fn settings_sync_apply(preview_id: String, state: tauri::State<'_, crate::config::AppState>, app: tauri::AppHandle) -> Result<Vec<ApplyResult>> {
+    use tauri::{Emitter, Manager};
+    let document = PREVIEWS.get_or_init(Default::default).lock().map_err(|_| "预览缓存不可用")?
+        .remove(&preview_id).filter(|(time, _)| time.elapsed() < Duration::from_secs(900))
+        .map(|(_, value)| value).ok_or("预览已过期或已使用，请重新预览")?;
+    let _connection = super::lock(&super::directory()?, "connection.lock")?;
+    if transport::route_key()? != document.pairing_binding { return Err("配对或地址已改变，请重新预览".into()); }
+    let _contents = content_lock()?;
+    let local_keys: Vec<_> = document.local_snapshot.keys().copied().collect();
+    if local_categories(&local_keys)? != document.local_snapshot {
+        return Err("本机所选设置或关联内容库已改变，请重新预览".into());
+    }
+    let mut results = Vec::new();
+    for (&category, incoming) in &document.snapshot.categories {
+        let outcome = (|| -> Result<String> {
+            if local_categories(&[category])?[&category] != document.local_snapshot[&category] {
+                return Err("本机设置已改变，请重新预览".into());
+            }
+            if incoming == &document.local_snapshot[&category] { return Ok("无变化".into()); }
+            if config_category(&AppConfig::default(), category).is_some() || category == Category::PromptTemplates {
+                let mut memory = state.config.lock().map_err(|_| "本机设置锁不可用")?;
+                let baseline = memory.save_baseline.clone().unwrap_or(serde_json::to_value(AppConfig::default()).map_err(|e| e.to_string())?);
+                if serde_json::to_value(&*memory).map_err(|e| e.to_string())? != baseline {
+                    return Err("本机窗口还有未保存设置，请先保存或重新加载".into());
+                }
+                let saved = crate::config::update_config_locked(|config| {
+                    let current = if category == Category::PromptTemplates {
+                        // Content lock also serializes template imports; the file
+                        // lock protects ordinary template edits.
+                        let raw = json!({"enabled":config.custom_prompt_config.enabled,"max_prompts":config.custom_prompt_config.max_prompts,"prompts":project_entries(category, &serde_json::to_value(&config.custom_prompt_config.prompts)?) .map_err(anyhow::Error::msg)?});
+                        raw
+                    } else { config_category(config, category).unwrap() };
+                    anyhow::ensure!(current == document.local_snapshot[&category], "本机设置已改变，请重新预览");
+                    update_config_category(config, category, incoming).map_err(anyhow::Error::msg)
+                }).map_err(|e| e.to_string())?;
+                *memory = saved;
+                state.global_shortcut_enabled.store(memory.shortcut_config.global_enabled, std::sync::atomic::Ordering::Relaxed);
+                if category == Category::Window {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let w = &memory.ui_config.window_config;
+                        let apply = (|| -> std::result::Result<(), tauri::Error> {
+                            window.set_always_on_top(memory.ui_config.always_on_top)?;
+                            window.set_min_size(Some(tauri::LogicalSize::new(w.min_width, w.min_height)))?;
+                            window.set_max_size(Some(tauri::LogicalSize::new(w.max_width, w.max_height)))?;
+                            let (width, height) = if w.fixed { (w.fixed_width, w.fixed_height) } else { (w.free_width, w.free_height) };
+                            window.set_size(tauri::LogicalSize::new(width, height))?;
+                            Ok(())
+                        })();
+                        if let Err(error) = apply { return Ok(format!("设置已保存；当前窗口应用失败：{error}，下次打开时生效")); }
+                    }
+                }
+                Ok("已复制所选设置".into())
+            } else { apply_content(category, incoming) }
+        })();
+        results.push(ApplyResult { category, success: outcome.is_ok(), message: outcome.unwrap_or_else(|e| e) });
+    }
+    let _ = app.emit("settings-sync-applied", &results);
+    if results.iter().any(|r| r.success && r.category == Category::PromptTemplates) {
+        crate::bridge::ws::broadcast_custom_prompt_config_changed(&app);
+    }
+    if results.iter().any(|r| r.success && r.category == Category::GhostSuggestions) {
+        crate::bridge::ws::broadcast_ghost_suggestions_changed(&app, crate::ghost_suggestions::load_store_value());
+    }
+    Ok(results)
 }
 
 #[cfg(test)]

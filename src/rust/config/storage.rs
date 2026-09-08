@@ -38,13 +38,11 @@ pub async fn save_config(state: &State<'_, AppState>, app: &AppHandle) -> Result
         fs::create_dir_all(parent)?;
     }
 
-    let config = state
+    let mut config = state
         .config
         .lock()
         .map_err(|e| anyhow::anyhow!("获取配置失败: {}", e))?;
-    let config_json = serde_json::to_string_pretty(&*config)?;
-
-    atomic_write_config(&config_path, config_json.as_bytes())?;
+    *config = save_config_changes(&config)?;
 
     log::debug!("配置已保存到: {:?}", config_path);
 
@@ -61,6 +59,7 @@ pub async fn load_config(state: &State<'_, AppState>, app: &AppHandle) -> Result
 
         // 合并默认快捷键配置，确保新的默认快捷键被添加
         merge_default_shortcuts(&mut config);
+        config.save_baseline = Some(serde_json::to_value(&config)?);
 
         // 同步快捷键全局启用状态
         state
@@ -151,6 +150,7 @@ pub fn load_standalone_config() -> Result<AppConfig> {
 
         // 合并默认快捷键配置
         merge_default_shortcuts(&mut config);
+        config.save_baseline = Some(serde_json::to_value(&config)?);
 
         Ok(config)
     } else {
@@ -161,11 +161,62 @@ pub fn load_standalone_config() -> Result<AppConfig> {
 
 /// 独立保存配置文件（用于 bridge-only / MCP 等无 Tauri AppState 的进程）
 pub fn save_standalone_config(config: &AppConfig) -> Result<()> {
-    let config_path = get_standalone_config_path()?;
-    let config_json = serde_json::to_string_pretty(config)?;
+    save_config_changes(config)?;
+    Ok(())
+}
 
-    atomic_write_config(&config_path, config_json.as_bytes())?;
+/// All GUI and standalone writers merge only their changes under the same file lock.
+/// A concurrent change to the same field is rejected instead of silently overwritten.
+pub fn save_config_changes(config: &AppConfig) -> Result<AppConfig> {
+    update_config_locked(|latest| {
+        let mut current = serde_json::to_value(&*latest)?;
+        let desired = serde_json::to_value(config)?;
+        let default = serde_json::to_value(AppConfig::default())?;
+        merge_config_fields(config.save_baseline.as_ref().unwrap_or(&default), &desired, &mut current, "")?;
+        *latest = serde_json::from_value(current)?;
+        Ok(())
+    })
+}
 
+pub fn update_config_locked(change: impl FnOnce(&mut AppConfig) -> Result<()>) -> Result<AppConfig> {
+    let path = get_standalone_config_path()?;
+    let parent = path.parent().ok_or_else(|| anyhow::anyhow!("配置路径无效"))?;
+    fs::create_dir_all(parent)?;
+    let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true)
+        .open(parent.join("config.lock"))?;
+    fs2::FileExt::lock_exclusive(&lock)?;
+    let mut merged = load_standalone_config()?;
+    change(&mut merged)?;
+    atomic_write_config(&path, &serde_json::to_vec_pretty(&merged)?)?;
+    merged.save_baseline = Some(serde_json::to_value(&merged)?);
+    Ok(merged)
+}
+
+fn merge_config_fields(base: &serde_json::Value, desired: &serde_json::Value, current: &mut serde_json::Value, path: &str) -> Result<()> {
+    if base == desired { return Ok(()); }
+    if let (Some(before), Some(after), Some(now)) = (base.as_object(), desired.as_object(), current.as_object_mut()) {
+        for key in before.keys().chain(after.keys()).collect::<std::collections::BTreeSet<_>>() {
+            let field = format!("{path}/{key}");
+            match (before.get(key), after.get(key)) {
+                (Some(b), Some(d)) => {
+                    let value = now.entry(key.clone()).or_insert(serde_json::Value::Null);
+                    merge_config_fields(b, d, value, &field)?;
+                }
+                (None, Some(d)) => {
+                    anyhow::ensure!(now.get(key).is_none_or(|v| v == d), "设置 {field} 已在另一窗口改变，请重新加载");
+                    now.insert(key.clone(), d.clone());
+                }
+                (Some(b), None) => {
+                    anyhow::ensure!(now.get(key).is_none_or(|v| v == b), "设置 {field} 已在另一窗口改变，请重新加载");
+                    now.remove(key);
+                }
+                _ => {}
+            }
+        }
+    } else {
+        anyhow::ensure!(current == base || current == desired, "设置 {path} 已在另一窗口改变，请重新加载");
+        *current = desired.clone();
+    }
     Ok(())
 }
 

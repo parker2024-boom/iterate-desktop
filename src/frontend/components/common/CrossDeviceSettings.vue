@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { refreshCrossDevice, useCrossDevice } from '../../composables/useCrossDevice'
+import SyncSettingsPreview from './SyncSettingsPreview.vue'
 
 interface ConnectionConfig {
   device_name: string
@@ -18,8 +19,22 @@ const notice = ref('')
 const peerName = ref<string | null>(null)
 const pairingCode = ref('')
 const ownCode = ref('')
+const savedConfig = ref('')
 const config = ref<ConnectionConfig>({ device_name: '', listen_ip: '', listen_port: 5540, peer_host: '', peer_port: 5540 })
 const { crossState } = useCrossDevice()
+const hasChanges = computed(() => JSON.stringify(config.value) !== savedConfig.value)
+const incomingPeerName = computed(() => {
+  try {
+    const code = pairingCode.value.trim()
+    if (!code.startsWith('iterate-pair-v2:'))
+      return ''
+    const bytes = Uint8Array.from(atob(code.slice('iterate-pair-v2:'.length)), char => char.charCodeAt(0))
+    const pair = JSON.parse(new TextDecoder().decode(bytes))
+    return typeof pair.name === 'string' ? pair.name.slice(0, 64) : ''
+  }
+  catch { return '' }
+})
+watch(config, () => { ownCode.value = '' }, { deep: true })
 const status = computed(() => crossState.value.connected
   ? (crossState.value.peer_enabled ? '加密通道已连接，对端已开启' : '加密通道已连接，等待对端开启')
   : '对端未连接')
@@ -35,13 +50,14 @@ async function loadSettings() {
     const result = await invoke<ConfigResult>('get_cross_device_config')
     config.value = result.config
     peerName.value = result.peer_name
+    savedConfig.value = JSON.stringify(result.config)
     loaded.value = true
   }
   catch (cause) { error.value = String(cause) }
   finally { busy.value = false }
 }
 
-async function runAction(action: 'save' | 'test' | 'generate') {
+async function runAction(action: 'save' | 'test' | 'generate' | 'pair') {
   if (![config.value.listen_port, config.value.peer_port].every(port => Number.isInteger(port) && port >= 1 && port <= 65535)) {
     error.value = '端口须为 1–65535'
     return
@@ -50,26 +66,41 @@ async function runAction(action: 'save' | 'test' | 'generate') {
   error.value = ''
   notice.value = ''
   try {
-    if (action === 'generate') {
-      ownCode.value = await invoke<string>('generate_cross_device_pairing')
-      notice.value = '本机配对码已生成，请复制到另一台设备。'
-    }
-    else if (action === 'save') {
-      const result = await invoke<ConfigResult>('save_cross_device_config', { config: config.value, pairingCode: pairingCode.value || null })
+    if (action !== 'test') {
+      const result = await invoke<ConfigResult>('save_cross_device_config', {
+        config: config.value,
+        pairingCode: action === 'pair' ? pairingCode.value.trim() : null,
+      })
       config.value = result.config
       peerName.value = result.peer_name
-      pairingCode.value = ''
+      savedConfig.value = JSON.stringify(result.config)
       ownCode.value = ''
-      notice.value = '已保存并启动本机接收服务。两端配对后，在顶部开启跨设备提醒。'
-      await refreshCrossDevice()
+      if (action === 'pair') {
+        pairingCode.value = ''
+        notice.value = `已添加对端 ${peerName.value || ''}，正在检查连接。`
+      }
+      else {
+        notice.value = '本机地址已保存，接收服务已就绪。'
+      }
     }
-    else {
-      const result = await invoke<{ message: string }>('test_cross_device_connection', { config: config.value, pairingCode: pairingCode.value || null })
+    if (action === 'generate') {
+      ownCode.value = await invoke<string>('generate_cross_device_pairing')
+      await copyCode()
+    }
+    else if (action === 'test' || action === 'pair') {
+      const result = await invoke<{ message: string }>('test_cross_device_connection', { config: config.value, pairingCode: null })
       notice.value = result.message
     }
   }
-  catch (cause) { error.value = String(cause) }
-  finally { busy.value = false }
+  catch (cause) {
+    error.value = String(cause)
+    if (action === 'pair' && !pairingCode.value)
+      notice.value = '对端资料已保存，连接检查未通过。请确认另一端也已导入本机配对码，且地址可达。'
+  }
+  finally {
+    await refreshCrossDevice().catch(() => {})
+    busy.value = false
+  }
 }
 
 async function copyCode() {
@@ -86,7 +117,7 @@ onMounted(loadSettings)
 <template>
   <section aria-label="跨设备配置">
     <p class="mb-3 text-sm opacity-75">
-      配置保存在本机，后续直接使用标题栏开关。两端均可填写多个 IP，以 / 分隔，再交换配对码。
+      两端分别生成并交换配对码，再各自点击“配对并连接”。IP 支持以 / 分隔填写主、备用地址；连接成功后，在标题栏开启提醒。
     </p>
     <n-form label-placement="top" size="small" :disabled="busy || !loaded" :show-feedback="false">
       <n-form-item label="本机名称" class="mb-3">
@@ -115,14 +146,15 @@ onMounted(loadSettings)
         按填写顺序连接，当前地址不通时尝试下一项；各地址使用同一端口，均须通向同一台已配对设备。
       </p>
       <n-form-item label="对端配对码" class="mb-3">
-        <n-input v-model:value="pairingCode" type="password" show-password-on="click" aria-label="对端配对码" :placeholder="peerName ? `已配对：${peerName}；更换时粘贴新码` : '粘贴另一台设备生成的配对码'" />
+        <n-input v-model:value="pairingCode" type="password" show-password-on="click" aria-label="对端配对码" :placeholder="peerName ? `已添加：${peerName}；更换时粘贴新码` : '粘贴另一台设备生成的配对码'" />
       </n-form-item>
     </n-form>
+    <p v-if="incomingPeerName" class="text-sm mb-3">即将添加对端：{{ incomingPeerName }}</p>
     <div class="flex gap-2 mb-3">
       <n-button size="small" :disabled="busy || !loaded" @click="runAction('generate')">
-        生成本机配对码
+        生成并复制本机配对码
       </n-button>
-      <n-button v-if="ownCode" size="small" @click="copyCode">
+      <n-button v-if="ownCode" size="small" :disabled="busy || hasChanges" @click="copyCode">
         复制配对码
       </n-button>
     </div>
@@ -131,7 +163,7 @@ onMounted(loadSettings)
         配对信息保存在本机 JSON 文件中，不参与设置同步。
     </p>
     <p role="status" class="mb-3">
-      {{ status }}<span v-if="crossState.connected && crossState.connected_ip"> · {{ crossState.using_backup ? '备用 IP' : '主 IP' }} {{ crossState.connected_ip }}</span><span v-if="peerName"> · 已配对 {{ peerName }}</span>
+      {{ status }}<span v-if="crossState.connected && crossState.connected_ip"> · {{ crossState.using_backup ? '备用 IP' : '主 IP' }} {{ crossState.connected_ip }}</span><span v-if="peerName"> · 已添加对端 {{ peerName }}</span><span> · 本机提醒{{ crossState.enabled ? '已开启' : '未开启' }}</span>
     </p>
     <p v-if="error" role="alert" class="mb-3 text-red-500 whitespace-pre-wrap break-all">
       {{ error }}
@@ -140,12 +172,16 @@ onMounted(loadSettings)
       {{ notice }}
     </p>
     <div class="flex justify-end gap-2">
-      <n-button :loading="busy" :disabled="!loaded" @click="runAction('test')">
-        测试连接
+      <n-button v-if="peerName && !pairingCode.trim()" :loading="busy" :disabled="!loaded || hasChanges" @click="runAction('test')">
+        重新检查连接
       </n-button>
-      <n-button type="primary" :loading="busy" :disabled="!loaded" @click="runAction('save')">
-        保存配置
+      <n-button v-if="peerName && hasChanges && !pairingCode.trim()" :loading="busy" :disabled="!loaded" @click="runAction('save')">
+        保存修改
+      </n-button>
+      <n-button type="primary" :loading="busy" :disabled="!loaded || !pairingCode.trim()" @click="runAction('pair')">
+        配对并连接
       </n-button>
     </div>
+    <SyncSettingsPreview :disabled="busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" :peer-name="peerName" />
   </section>
 </template>

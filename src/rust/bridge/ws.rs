@@ -9886,7 +9886,7 @@ async fn handle_api_config_post(
                 patch_app_config(&config, &body).map(|new_config| (config.clone(), new_config))
             });
 
-            let Some((previous_config, new_config)) = config_pair else {
+            let Some((mut previous_config, new_config)) = config_pair else {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({"error": "invalid_config_patch"})),
@@ -9903,6 +9903,9 @@ async fn handle_api_config_post(
                     .into_response();
             }
 
+            // Roll back only the fields this patch changed, and reject rollback
+            // if another writer has since changed those same fields.
+            previous_config.save_baseline = serde_json::to_value(&new_config).ok();
             match app_state.config.lock() {
                 Ok(mut config) => *config = new_config,
                 Err(_) => {

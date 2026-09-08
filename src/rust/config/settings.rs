@@ -7,6 +7,9 @@ use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
+    /// The exact fields read by this writer; never persisted or synchronized.
+    #[serde(skip)]
+    pub save_baseline: Option<serde_json::Value>,
     #[serde(default = "default_ui_config")]
     pub ui_config: UiConfig, // UI相关配置（主题、窗口、置顶等）
     #[serde(default = "default_audio_config")]
@@ -362,6 +365,7 @@ impl Default for AppState {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            save_baseline: None,
             ui_config: default_ui_config(),
             audio_config: default_audio_config(),
             reply_config: default_reply_config(),

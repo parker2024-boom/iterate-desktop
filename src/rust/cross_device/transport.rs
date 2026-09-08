@@ -587,7 +587,10 @@ pub async fn save_cross_device_config(
             // The existing daemon owns overlapping listeners until revision reload.
             if existed && previous.listen_port == config.listen_port && old_ips.contains(&ip) { continue; }
             std::net::TcpListener::bind((ip, config.listen_port))
-                .map_err(|_| format!("本机 IP {ip} 的端口已被占用，原配置未更改"))?;
+                .map_err(|error| match error.kind() {
+                    std::io::ErrorKind::AddrInUse => format!("本机地址 {ip}:{} 已被其他进程监听，原配置未更改", config.listen_port),
+                    _ => format!("无法监听本机地址 {ip}:{}：{error}，原配置未更改", config.listen_port),
+                })?;
         }
     }
     identity(true)?;

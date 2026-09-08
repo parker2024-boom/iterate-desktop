@@ -32,14 +32,14 @@ fn should_show_main_window_on_launch(args: &[String]) -> bool {
         return true;
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         // Windows 直接双击 iterate.exe 时，默认展示主界面，
         // 避免应用已启动但只剩控制台/隐藏窗口，造成“没打开”的体验。
         args.len() == 1
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         cfg!(debug_assertions)
             && std::env::var("ITERATE_DEV_SHOW_MAIN")
@@ -595,6 +595,7 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
             crate::cross_device::get_cross_device_status,
             crate::cross_device::settings_sync::settings_sync_export,
             crate::cross_device::settings_sync::settings_sync_preview,
+            crate::cross_device::settings_sync::settings_sync_apply,
             crate::cross_device::set_cross_device_enabled,
             crate::cross_device::transport::get_cross_device_config,
             crate::cross_device::transport::generate_cross_device_pairing,
