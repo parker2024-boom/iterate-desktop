@@ -184,7 +184,7 @@ pub fn update_config_locked(change: impl FnOnce(&mut AppConfig) -> Result<()>) -
     fs::create_dir_all(parent)?;
     let lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true)
         .open(parent.join("config.lock"))?;
-    fs2::FileExt::lock_exclusive(&lock)?;
+    lock.lock()?;
     let mut merged = load_standalone_config()?;
     change(&mut merged)?;
     atomic_write_config(&path, &serde_json::to_vec_pretty(&merged)?)?;
