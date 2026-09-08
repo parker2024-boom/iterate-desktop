@@ -57,7 +57,7 @@ pub struct Difference {
     pub category: Category,
     pub local: Value,
     pub incoming: Value,
-    /// Content conflicts are displayed but must keep the existing local entry.
+    /// Matching local entries whose content will be replaced.
     pub conflicts: Vec<Value>,
 }
 
@@ -448,7 +448,7 @@ fn preview(
 ) -> Result<Preview> {
     let categories: Vec<_> = snapshot.categories.keys().copied().collect();
     validate_snapshot(&snapshot, &categories)?;
-    let mut differences: Vec<Difference> = snapshot
+    let differences: Vec<Difference> = snapshot
         .categories
         .iter()
         .filter_map(|(&category, incoming)| {
@@ -461,19 +461,7 @@ fn preview(
             })
         })
         .collect();
-    for difference in &mut differences {
-        let opposite = match difference.category {
-            Category::PromptTemplates => Category::PromptLibrary,
-            Category::PromptLibrary => Category::PromptTemplates,
-            _ => continue,
-        };
-        if let Some(other) = local.get(&opposite) {
-            let other = if opposite == Category::PromptTemplates { &other["prompts"] } else { other };
-            let incoming = if difference.category == Category::PromptTemplates { &difference.incoming["prompts"] } else { &difference.incoming };
-            difference.conflicts.extend(conflicts(Category::PromptLibrary, other, incoming));
-        }
-    }
-    let mut warnings=vec!["仅从对端导入本机；IP、凭据、配对、本机路径及历史保留本机。内容冲突保留本机，不删除本机独有项。".into()];
+    let mut warnings=vec!["配对端的所选设置将替换本机对应类别：同名内容被覆盖，本机独有条目被删除，来源为空时清空该类别。未勾选类别、IP、凭据、配对和本机路径不变。".into()];
     for category in categories {
         use Category::*;
         let warning = match category {
@@ -491,7 +479,7 @@ fn preview(
             McpTools => "将改变 MCP 工具的可用状态。",
             AutoCheckpoint => "自动检查点开启后会按现有机制创建 Git 检查点。",
             SpeechReplacements | SpeechCorrections => {
-                "不复制训练或使用统计；新规则训练次数为 0，语音替换规则须在本机训练至少 4 次后才生效。"
+                "不复制对端训练或使用统计；内容未变的规则保留本机统计，新建或改变内容的规则训练次数归零。语音替换规则须在本机训练至少 4 次后才生效。"
             }
             SpeechVocabulary => "只导入词汇内容，不复制学习统计。",
             _ => continue,
@@ -530,13 +518,7 @@ pub async fn settings_sync_preview(categories: Vec<Category>) -> Result<Preview>
     if transport::route_key()? != binding {
         return Err("配对或连接已改变，请重新预览".into());
     }
-    let mut local_selections = categories.clone();
-    if categories.iter().any(|c| matches!(c, Category::PromptTemplates | Category::PromptLibrary)) {
-        local_selections.extend([Category::PromptTemplates, Category::PromptLibrary]);
-        local_selections.sort();
-        local_selections.dedup();
-    }
-    let local = local_categories(&local_selections)?;
+    let local = local_categories(&categories)?;
     let result = preview(snapshot, local, binding)?;
     retain_preview(&result)?;
     Ok(result)
@@ -564,17 +546,25 @@ fn matches_entry(category: Category, a: &Value, b: &Value) -> bool {
     })
 }
 
-fn merge_entries(category: Category, current: &mut Vec<Value>, incoming: &Value, other: &[Value]) -> Result<usize> {
-    let mut added = 0;
+fn replace_entries(category: Category, current: &[Value], incoming: &Value) -> Result<Vec<Value>> {
+    let mut replacement = Vec::new();
     let now = chrono::Utc::now().to_rfc3339();
     for entry in incoming.as_array().ok_or("内容必须是数组")? {
-        if current.iter().chain(other).any(|old| matches_entry(category, old, entry)) { continue; }
+        if replacement.iter().any(|old| matches_entry(category, old, entry)) {
+            return Err("配对端内容含重复标识或名称，请先在配对端修正".into());
+        }
+        // Keep local metadata only for unchanged content, never import peer statistics.
+        if let Some(old) = current.iter().find(|old| matches_entry(category, old, entry)) {
+            if project_entries(category, &json!([old]))? == json!([entry]) {
+                replacement.push(old.clone());
+                continue;
+            }
+        }
         let mut entry = entry.clone();
         let row = entry.as_object_mut().ok_or("条目无效")?;
         for key in conflict_keys(category) {
             let value = row.get(*key).and_then(Value::as_str).unwrap_or("").trim().to_string();
             if value.is_empty() { return Err(format!("条目 {key} 不能为空")); }
-            row.insert((*key).into(), json!(value));
         }
         match category {
             Category::PromptTemplates => {
@@ -601,10 +591,9 @@ fn merge_entries(category: Category, current: &mut Vec<Value>, incoming: &Value,
             }
             _ => {}
         }
-        current.push(entry);
-        added += 1;
+        replacement.push(entry);
     }
-    Ok(added)
+    Ok(replacement)
 }
 
 fn update_config_category(config: &mut AppConfig, category: Category, incoming: &Value) -> Result<()> {
@@ -631,9 +620,8 @@ fn update_config_category(config: &mut AppConfig, category: Category, incoming: 
         Shortcuts => Some("shortcut_config"),
         McpTools => Some("mcp_config"),
         PromptTemplates => {
-            let mut entries = value["custom_prompt_config"]["prompts"].as_array().cloned().ok_or("本机模板无效")?;
-            let others = local_categories(&[PromptLibrary])?;
-            merge_entries(category, &mut entries, &incoming["prompts"], others[&PromptLibrary].as_array().ok_or("本机词库无效")?)?;
+            let current = value["custom_prompt_config"]["prompts"].as_array().ok_or("本机模板无效")?;
+            let entries = replace_entries(category, current, &incoming["prompts"])?;
             value["custom_prompt_config"]["prompts"] = json!(entries);
             value["custom_prompt_config"]["enabled"] = incoming["enabled"].clone();
             value["custom_prompt_config"]["max_prompts"] = incoming["max_prompts"].clone();
@@ -681,21 +669,18 @@ fn apply_content(category: Category, incoming: &Value) -> Result<String> {
         _ => return Err("未知内容分类".into()),
     };
     let mut document = read_optional(&path, empty)?;
-    let mut entries = match key { Some(key) => &document[key], None => &document }.as_array().cloned().ok_or("本机内容无效")?;
-    let others = if category == PromptLibrary {
-        let local = local_categories(&[PromptTemplates])?;
-        local[&PromptTemplates]["prompts"].as_array().cloned().ok_or("本机模板无效")?
-    } else { vec![] };
-    let added = merge_entries(category, &mut entries, incoming, &others)?;
-    if category == SpeechVocabulary && entries.len() > 500 { return Err("合并后语音词库超过 500 条，请减少来源词汇".into()); }
-    if added > 0 {
+    let current = match key { Some(key) => &document[key], None => &document }.as_array().ok_or("本机内容无效")?;
+    let entries = replace_entries(category, current, incoming)?;
+    if category == SpeechVocabulary && entries.len() > 500 { return Err("来源语音词库超过 500 条，请减少来源词汇".into()); }
+    let count = entries.len();
+    if &entries != current {
         if let Some(key) = key {
             document[key] = json!(entries);
             document[if category == SpeechVocabulary { "updated_at" } else { "updatedAt" }] = json!(chrono::Utc::now().to_rfc3339());
         } else { document = json!(entries); }
         super::atomic_json(&path, &document)?;
     }
-    Ok(format!("已新增 {added} 条；本机已有或冲突条目保留"))
+    Ok(format!("已替换为 {count} 条"))
 }
 
 #[tauri::command]
