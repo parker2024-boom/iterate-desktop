@@ -15,6 +15,7 @@ const emit = defineEmits<Emits>()
 interface Props {
   currentTheme: string
   alwaysOnTop: boolean
+  isMuted: boolean
   audioNotificationEnabled: boolean
   audioUrl: string
   windowWidth: number
@@ -27,6 +28,7 @@ interface Props {
 interface Emits {
   themeChange: [theme: string]
   toggleAlwaysOnTop: []
+  toggleMute: []
   toggleAudioNotification: []
   updateAudioUrl: [url: string]
   testAudio: []
@@ -156,6 +158,20 @@ function testPopup() {
               iterate
             </h1>
             <CrossDeviceToggle />
+            <n-button
+              size="small"
+              type="tertiary"
+              circle
+              :title="props.isMuted ? '免打扰已开启（点击恢复弹窗通知）' : '免打扰已关闭（点击暂停弹窗通知）'"
+              :aria-label="props.isMuted ? '免打扰已开启（点击恢复弹窗通知）' : '免打扰已关闭（点击暂停弹窗通知）'"
+              :aria-pressed="props.isMuted"
+              data-guide="notification-mute"
+              @click="$emit('toggleMute')"
+            >
+              <template #icon>
+                <div :class="props.isMuted ? 'i-carbon-notification-off' : 'i-carbon-notification'" class="w-4 h-4" />
+              </template>
+            </n-button>
             <n-button
               size="small"
               type="tertiary"

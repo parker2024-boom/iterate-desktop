@@ -368,19 +368,23 @@ pub(super) async fn peer(path: &str, body: Option<&Value>) -> Result<Value> {
 }
 
 pub(super) async fn local_daemon_ready() -> bool {
+    local_daemon_health().await.is_some_and(|value| super::supports_window_sync(&value))
+}
+
+async fn local_daemon_health() -> Option<Value> {
     let Ok(config) = connection_config() else {
-        return false;
+        return None;
     };
     let Ok(identity) = identity(false) else {
-        return false;
+        return None;
     };
     let Ok(local) = settings() else {
-        return false;
+        return None;
     };
-    let Ok(dir) = directory() else { return false; };
-    let Ok(process) = read_json::<Value>(&dir.join("daemon-process.json")) else { return false; };
+    let Ok(dir) = directory() else { return None; };
+    let Ok(process) = read_json::<Value>(&dir.join("daemon-process.json")) else { return None; };
     let Some(port) = process.get("health_port").and_then(Value::as_u64)
-        .and_then(|port| u16::try_from(port).ok()).filter(|port| *port != 0) else { return false; };
+        .and_then(|port| u16::try_from(port).ok()).filter(|port| *port != 0) else { return None; };
     let pair = Pairing {
         version: 2,
         device_id: local.device_id,
@@ -397,11 +401,9 @@ pub(super) async fn local_daemon_ready() -> bool {
         peer_port: port,
         ..config
     };
-    request(&local_config, &pair, "/health", None)
-        .await
-        .is_ok_and(|value| {
-            value.get("config_revision").and_then(Value::as_str) == route_key().ok().as_deref()
-        })
+    request(&local_config, &pair, "/health", None).await.ok().filter(|value| {
+        value.get("config_revision").and_then(Value::as_str) == route_key().ok().as_deref()
+    })
 }
 
 fn pending_requests() -> bool {
@@ -410,7 +412,7 @@ fn pending_requests() -> bool {
     };
     if let Ok(entries) = fs::read_dir(dir.join("requests")) {
         if entries.flatten().any(|entry| {
-            read_json::<super::Registration>(&entry.path()).is_ok_and(|reg| reg.pending())
+            read_json::<super::Registration>(&entry.path()).is_ok_and(|reg| reg.published && reg.pending())
         }) {
             return true;
         }
@@ -456,6 +458,9 @@ pub(super) async fn ensure_daemon() -> Result<()> {
     // a separate lifetime lock, so a stale PID cannot authorize a process kill.
     let start_guard = lock(&dir, "daemon-start.lock")?;
     if !local_daemon_ready().await {
+        if local_daemon_health().await.is_some_and(|value| !super::supports_window_sync(&value)) {
+            return Err("本机跨设备服务不支持窗口同步，请更新并重启本机服务后重试".into());
+        }
         let executable = std::env::var_os("ITERATE_DIALOG_GUI_EXECUTABLE")
             .map(std::path::PathBuf::from)
             .unwrap_or(std::env::current_exe().map_err(|e| e.to_string())?);

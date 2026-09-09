@@ -63,6 +63,7 @@
             "core:window:allow-hide",
             "core:window:allow-close",
             "core:window:allow-minimize",
+            "core:window:allow-request-user-attention",
             "core:window:allow-unminimize",
             "core:window:allow-set-focus",
             "core:window:allow-set-always-on-top",

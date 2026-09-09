@@ -1427,7 +1427,11 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
         };
     }
     let cross_registration = crate::cross_device::register(&mcp_request, &request_file, &response_file).await;
-    let delivery = request.delivery.as_ref().filter(|_| cross_registration.is_none());
+    // Every HTTP dialog has a Delivery. Deferred registration must retain that
+    // local disconnect/handoff tracking while adding later window synchronization.
+    let delivery = request.delivery.as_ref().filter(|_| {
+        !cross_registration.as_ref().is_some_and(|registration| registration.is_published())
+    });
     // Legacy bridge writers do not understand arbitration. Do not publish a
     // directly writable response-file route for a cross-device request.
     let response_route_file = if cross_registration.is_none() {

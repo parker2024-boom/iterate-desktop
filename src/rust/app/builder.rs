@@ -25,7 +25,9 @@ fn is_standalone_mcp_launch(args: &[String]) -> bool {
 
 fn should_show_main_window_on_launch(args: &[String]) -> bool {
     if is_standalone_mcp_launch(args) {
-        return true;
+        // The frontend owns the first presentation after reading do-not-disturb.
+        // Showing here produces a visible flash before a muted popup minimizes.
+        return false;
     }
 
     if args.iter().any(|arg| arg == "--show-main-window") {
@@ -534,6 +536,13 @@ mod tests {
             "--show-main-window".to_string(),
         ]));
     }
+
+    #[test]
+    fn standalone_popup_waits_for_notification_preference_before_showing() {
+        assert!(!super::should_show_main_window_on_launch(&[
+            "iterate".to_string(), "--mcp-request".to_string(), "{}".to_string(),
+        ]));
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -593,6 +602,7 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             crate::delivery::get_mcp_delivery_status,
             crate::cross_device::get_cross_device_status,
+            crate::cross_device::sync_cross_device_windows,
             crate::cross_device::settings_sync::settings_sync_export,
             crate::cross_device::settings_sync::settings_sync_preview,
             crate::cross_device::settings_sync::settings_sync_apply,

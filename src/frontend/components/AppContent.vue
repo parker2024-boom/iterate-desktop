@@ -1968,10 +1968,12 @@ onUnmounted(async () => {
     <LayoutWrapper
       v-else
       :app-config="props.appConfig"
+      :is-muted="props.isMuted"
       :codex-live-phase="globalCodexLivePhase"
       :codex-live-status="globalCodexLiveStatus"
       @theme-change="$emit('themeChange', $event)"
       @toggle-always-on-top="$emit('toggleAlwaysOnTop')"
+      @toggle-mute="$emit('toggleMute')"
       @toggle-audio-notification="$emit('toggleAudioNotification')"
       @update-audio-url="$emit('updateAudioUrl', $event)"
       @test-audio="$emit('testAudio')"

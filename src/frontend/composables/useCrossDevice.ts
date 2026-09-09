@@ -31,6 +31,9 @@ export async function refreshCrossDevice() {
     if (state.value.source_pending) {
       const pending = state.value.source_pending
       await invoke('send_mcp_response', { response: pending.response, requestId: pending.request_id, projectPath: pending.project_path, timelineRouteId: null })
+      // Deferred sources retain their GUI until the HTTP handoff completes.
+      // Only close after success; a failed handoff must keep its error window.
+      await invoke('exit_app')
     }
     if (state.value.mirror && state.value.resolved)
       await invoke('exit_app')

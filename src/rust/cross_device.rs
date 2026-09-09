@@ -19,6 +19,12 @@ use std::{
 };
 
 const VERSION: u32 = 2;
+const WINDOW_SYNC_CAPABILITY: &str = "window_sync_v1";
+
+fn supports_window_sync(value: &Value) -> bool {
+    value.get("capabilities").and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(WINDOW_SYNC_CAPABILITY)))
+}
 type Result<T> = std::result::Result<T, String>;
 
 fn directory() -> Result<PathBuf> {
@@ -90,12 +96,16 @@ pub struct Registration {
     request: Value,
     request_file: PathBuf,
     response_file: PathBuf,
+    #[serde(default = "published_by_default")]
+    published: bool,
 }
+
+fn published_by_default() -> bool { true }
 
 impl Registration {
     fn path(&self) -> Result<PathBuf> {
         Ok(directory()?
-            .join("requests")
+            .join(if self.published { "requests" } else { "deferred-requests" })
             .join(format!("{}.json", self.key)))
     }
     fn result_path(&self) -> Result<PathBuf> {
@@ -134,6 +144,9 @@ impl Registration {
     }
     pub fn key(&self) -> &str {
         &self.key
+    }
+    pub fn is_published(&self) -> bool {
+        self.published
     }
     pub fn recover_accepted_response(&self) {
         // If the source window exits after the peer won, preserve that accepted
@@ -180,22 +193,21 @@ pub async fn register(
     request_file: &Path,
     response_file: &Path,
 ) -> Option<Registration> {
+    transport::validate_enable().ok()?;
     let route_key = transport::route_key().ok()?;
     let local = settings().ok()?;
-    if !local.enabled || std::env::var_os("ITERATE_CROSS_DEVICE_MIRROR").is_some() {
+    if std::env::var_os("ITERATE_CROSS_DEVICE_MIRROR").is_some() {
         return None;
     }
-    if transport::ensure_daemon().await.is_err() {
-        return None;
-    }
+    let daemon_ready = transport::ensure_daemon().await.is_ok();
     let message = request.get("message").and_then(Value::as_str).unwrap_or("");
     if has_attachments(request) || message.contains("![") || message.contains("<img") {
         return None;
     }
-    let snapshot = peer("/snapshot", None).await.ok()?;
-    if snapshot.get("enabled").and_then(Value::as_bool) != Some(true) {
-        return None;
-    }
+    let published = daemon_ready && local.enabled && peer("/snapshot", None).await.ok()
+        .is_some_and(|snapshot| snapshot.get("enabled").and_then(Value::as_bool) == Some(true));
+    // Keep paired requests registered while offline or disabled so an already
+    // open popup can be synchronized after both devices enable the feature.
     let _route_guard = lock(&directory().ok()?, "connection.lock").ok()?;
     if transport::route_key().ok()? != route_key {
         return None;
@@ -210,6 +222,7 @@ pub async fn register(
         request: request.clone(),
         request_file: request_file.into(),
         response_file: response_file.into(),
+        published,
     };
     atomic_json(&registration.path().ok()?, &registration).ok()?;
     registration.renew();
@@ -218,7 +231,16 @@ pub async fn register(
 
 fn load_registration(key: &str) -> Result<Registration> {
     uuid::Uuid::parse_str(key).map_err(|_| "无效请求标识")?;
-    read_json(&directory()?.join("requests").join(format!("{key}.json")))
+    let dir = directory()?;
+    let published = dir.join("requests").join(format!("{key}.json"));
+    load_registration_files(&published, || read_json(&dir.join("deferred-requests").join(format!("{key}.json"))))
+}
+
+fn load_registration_files(published: &Path, read_deferred: impl FnOnce() -> Result<Registration>) -> Result<Registration> {
+    if published.exists() { read_json(&published) }
+    // Publication writes the destination before removing the deferred file.
+    // If that move raced our first lookup, the destination is now authoritative.
+    else { read_deferred().or_else(|_| read_json(published)) }
 }
 
 // The same OS file lock is used by the local popup and peer HTTP handler.
@@ -250,6 +272,9 @@ pub async fn submit(response: &Value) -> Result<bool> {
         if response.as_str() == Some("CANCELLED")
             || response.pointer("/metadata/source").and_then(Value::as_str) == Some("popup_closed")
         {
+            let dir = directory()?;
+            let _guard = lock(&dir, "connection.lock")?;
+            record_dismissal(&dir, &key)?;
             return Ok(true);
         }
         if has_attachments(response) {
@@ -361,6 +386,60 @@ pub async fn set_cross_device_enabled(enabled: bool) -> Result<Value> {
     Ok(get_cross_device_status().await)
 }
 
+#[tauri::command]
+pub async fn sync_cross_device_windows() -> Result<Value> {
+    if !settings()?.enabled {
+        return Err("请先开启本机跨设备开关".into());
+    }
+    transport::ensure_daemon().await?;
+    let revision = transport::route_key()?;
+    // Only dismissals observed before this action may be restored.
+    let restore = {
+        let dir = directory()?;
+        let _guard = lock(&dir, "connection.lock")?;
+        capture_dismissals(&dir)
+    };
+    let remote = peer("/snapshot", None).await?;
+    if !supports_window_sync(&remote) {
+        return Err("配对端跨设备服务不支持窗口同步，请更新并重启配对端服务后重试".into());
+    }
+    if remote.get("enabled").and_then(Value::as_bool) != Some(true) {
+        return Err("请先开启配对端跨设备开关".into());
+    }
+    let remote = peer("/sync-windows", Some(&json!({}))).await
+        .map_err(|e| format!("读取对端窗口失败，请确认对端已更新并重启：{e}"))?;
+    let keys: Vec<String> = remote.get("requests").and_then(Value::as_array)
+        .ok_or("对端返回了无效窗口列表")?.iter()
+        .map(|item| {
+            let key = item.get("key").and_then(Value::as_str).ok_or("缺少窗口标识")?;
+            uuid::Uuid::parse_str(key).map_err(|_| "无效窗口标识")?;
+            Ok(key.to_string())
+        }).collect::<Result<_>>()?;
+    let queue = directory()?.join("window-sync");
+    fs::create_dir_all(&queue).map_err(|e| e.to_string())?;
+    let job = tempfile::tempdir_in(queue).map_err(|e| e.to_string())?;
+    atomic_json(&job.path().join("request.json"), &json!({
+        "revision": revision, "keys": keys, "restore": restore, "created_at": chrono::Utc::now().timestamp_millis(),
+        "expires_at": chrono::Utc::now().timestamp() + 30
+    }))?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        if !settings()?.enabled || transport::route_key()? != revision {
+            return Err("跨设备开关或配对已改变，请重新同步".into());
+        }
+        if let Ok(result) = read_json::<Value>(&job.path().join("result.json")) {
+            if let Some(error) = result.get("error").and_then(Value::as_str) {
+                return Err(error.into());
+            }
+            return Ok(result);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err("等待窗口同步超时，请检查两端连接后重试".into());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 struct Broker {
     token: String,
     revision: String,
@@ -408,7 +487,7 @@ async fn snapshot(
     ) {
         for entry in entries.flatten() {
             if let Ok(reg) = read_json::<Registration>(&entry.path()) {
-                if reg.active() {
+                if config.enabled && reg.published && reg.active() {
                     requests.push(
                         json!({"key":reg.key,"origin_device_id":reg.origin_device_id,
                     "origin_name":reg.origin_name,"request":reg.request}),
@@ -418,8 +497,45 @@ async fn snapshot(
         }
     }
     Ok(Json(
-        json!({"version":VERSION,"config_revision":state.revision,"enabled":config.enabled,"device_id":config.device_id,"device_name":connection_config().ok().map(|c|c.device_name),"requests":requests}),
+        json!({"version":VERSION,"capabilities":[WINDOW_SYNC_CAPABILITY],"config_revision":state.revision,"enabled":config.enabled,"device_id":config.device_id,"device_name":connection_config().ok().map(|c|c.device_name),"requests":requests}),
     ))
+}
+
+// Only an explicit, authenticated pull publishes requests opened while offline.
+async fn sync_open_windows(
+    State(state): State<Arc<Broker>>,
+    headers: HeaderMap,
+) -> std::result::Result<Json<Value>, StatusCode> {
+    if !authorized(&headers, &state) { return Err(StatusCode::UNAUTHORIZED); }
+    {
+        let dir = directory().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let _guard = lock(&dir, "connection.lock").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if transport::route_key().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? != state.revision {
+            return Err(StatusCode::CONFLICT);
+        }
+        if !settings().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.enabled {
+            return Err(StatusCode::CONFLICT);
+        }
+        // Separate deferred records are invisible to old daemons. Read the old
+        // layout as well so already registered source windows remain usable.
+        for folder in ["requests", "deferred-requests"] {
+            if let Ok(entries) = fs::read_dir(dir.join(folder)) {
+                for entry in entries.flatten() {
+                    if let Ok(mut reg) = read_json::<Registration>(&entry.path()) {
+                        if !reg.published && reg.active() {
+                            reg.published = true;
+                            atomic_json(&reg.path().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?, &reg)
+                                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                            if folder == "deferred-requests" {
+                                fs::remove_file(entry.path()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    snapshot(State(state), headers).await
 }
 
 // Local readiness must not traverse a VPN interface: peer-only WireGuard routes
@@ -432,7 +548,7 @@ async fn health(
     if !state.network_ready.load(std::sync::atomic::Ordering::Acquire) {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    Ok(Json(json!({"version":VERSION,"config_revision":state.revision,"device_id":state.device_id})))
+    Ok(Json(json!({"version":VERSION,"capabilities":[WINDOW_SYNC_CAPABILITY],"config_revision":state.revision,"device_id":state.device_id})))
 }
 
 pub fn mirror_process_guard() -> Result<Option<File>> {
@@ -523,7 +639,7 @@ fn spawn_mirror(item: &Value) -> Result<Mirror> {
     let plain_links = regex::Regex::new(r"\[([^\]]*)\]\([^)]*\)")
         .map_err(|e| e.to_string())?
         .replace_all(text, "$1");
-    let request = json!({"id":format!("cross-{key}"),"message":format!("跨设备来源：{name} · 仅支持文本和选项\n\n{plain_links}"),
+    let request = json!({"id":format!("cross-{key}"),"message":format!("{plain_links}\n\n---\n\n注:跨设备来源，仅支持文本和选项"),
         "predefined_options":source.get("predefined_options").cloned().unwrap_or(json!([])),
         "is_markdown":source.get("is_markdown").cloned().unwrap_or(json!(true)),
         "conversation_title":format!("来自 {name} · {}",source.get("conversation_title").and_then(Value::as_str).unwrap_or("跨设备请求"))});
@@ -531,6 +647,9 @@ fn spawn_mirror(item: &Value) -> Result<Mirror> {
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let request_file = dir.join(format!("{key}.json"));
     let ready_file = dir.join(format!("{key}.ready"));
+    if ready_file.exists() {
+        fs::remove_file(&ready_file).map_err(|e| e.to_string())?;
+    }
     atomic_json(&request_file, &request)?;
     let executable = std::env::var_os("ITERATE_DIALOG_GUI_EXECUTABLE")
         .map(PathBuf::from)
@@ -561,10 +680,38 @@ fn spawn_mirror(item: &Value) -> Result<Mirror> {
     })
 }
 
+fn record_dismissal(dir: &Path, key: &str) -> Result<()> {
+    uuid::Uuid::parse_str(key).map_err(|_| "无效镜像标识")?;
+    let path = dir.join("dismissed").join(key);
+    // The popup records its close before exiting; the daemon must preserve that
+    // marker when it later reaps the process (including across a sync click).
+    if !path.exists() { atomic_json(&path, &json!(uuid::Uuid::new_v4().to_string()))?; }
+    Ok(())
+}
+
+fn capture_dismissals(dir: &Path) -> HashMap<String, Value> {
+    fs::read_dir(dir.join("dismissed")).into_iter().flatten().flatten()
+        .filter_map(|entry| Some((entry.file_name().to_str()?.to_string(), read_json(&entry.path()).ok()?)))
+        .collect()
+}
+
+fn restore_dismissals(dir: &Path, keys: &HashSet<String>, restore: &HashMap<String, Value>, dismissed: &mut HashSet<String>) {
+    for key in keys {
+        if uuid::Uuid::parse_str(key).is_err() { continue; }
+        let path = dir.join("dismissed").join(key);
+        if let Some(marker) = restore.get(key) {
+            if read_json::<Value>(&path).ok().as_ref() == Some(marker) && fs::remove_file(&path).is_ok() {
+                dismissed.remove(key);
+            }
+        }
+    }
+}
+
 async fn mirror_loop() {
     let mut mirrors: HashMap<String, Mirror> = HashMap::new();
     let mut dismissed: HashSet<String> = HashSet::new();
     loop {
+        let poll_started = chrono::Utc::now().timestamp_millis();
         let route_key = transport::route_key().ok();
         if let Ok(snapshot) = peer("/snapshot", None).await {
             let Ok(dir) = directory() else {
@@ -592,7 +739,7 @@ async fn mirror_loop() {
                 if mirror.child.try_wait().ok().flatten().is_some() {
                     dismissed.insert(key.clone());
                     if let Ok(dir) = directory() {
-                        let _ = atomic_json(&dir.join("dismissed").join(key), &json!(true));
+                        let _ = record_dismissal(&dir, key);
                     }
                     return false;
                 }
@@ -600,22 +747,80 @@ async fn mirror_loop() {
                 true
             });
             dismissed.retain(|key| active.contains(key));
-            if settings().is_ok_and(|s| s.enabled) {
-                for item in requests {
+            let enabled = settings().is_ok_and(|s| s.enabled)
+                && snapshot.get("enabled").and_then(Value::as_bool) == Some(true);
+            let mut jobs = Vec::new();
+            if let Ok(entries) = fs::read_dir(dir.join("window-sync")) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.join("result.json").exists() { continue; }
+                    let Ok(job) = read_json::<Value>(&path.join("request.json")) else { continue; };
+                    // A job created during this HTTP poll must use the next snapshot.
+                    if job.get("created_at").and_then(Value::as_i64).unwrap_or(i64::MAX) >= poll_started { continue; }
+                    if job.get("expires_at").and_then(Value::as_i64).unwrap_or(0) <= chrono::Utc::now().timestamp() {
+                        let _ = atomic_json(&path.join("result.json"), &json!({"error":"窗口同步请求已过期，请重试"}));
+                        continue;
+                    }
+                    if !enabled || job.get("revision").and_then(Value::as_str) != route_key.as_deref() {
+                        let _ = atomic_json(&path.join("result.json"), &json!({"error":"请确认两端跨设备开关已开启且配对未改变"}));
+                        continue;
+                    }
+                    let Ok(keys) = serde_json::from_value::<Vec<String>>(job["keys"].clone()) else { continue; };
+                    let keys: HashSet<String> = keys.into_iter().filter(|key| active.contains(key)).collect();
+                    // Restore this fixed batch only once, even if a user closes a
+                    // window while other windows in the batch are still loading.
+                    if !path.join("started.json").exists() {
+                        let restore = serde_json::from_value::<HashMap<String, Value>>(job["restore"].clone()).unwrap_or_default();
+                        // A close acknowledged by the popup may still be exiting.
+                        // Reap that process before consuming its saved dismissal.
+                        if keys.iter().any(|key| mirrors.contains_key(key)
+                            && restore.get(key).is_some_and(|marker|
+                                read_json::<Value>(&dir.join("dismissed").join(key)).ok().as_ref() == Some(marker))) {
+                            continue;
+                        }
+                        if atomic_json(&path.join("started.json"), &json!(true)).is_err() { continue; }
+                        restore_dismissals(&dir, &keys, &restore, &mut dismissed);
+                    }
+                    jobs.push((path, keys));
+                }
+            }
+            let mut sync_errors = HashMap::new();
+            if enabled {
+                for item in &requests {
                     let Some(key) = item.get("key").and_then(Value::as_str) else {
                         continue;
                     };
+                    if uuid::Uuid::parse_str(key).is_err() {
+                        sync_errors.insert(key.to_string(), "对端返回了无效窗口标识".to_string());
+                        continue;
+                    }
                     if directory().is_ok_and(|dir| dir.join("dismissed").join(key).exists()) {
                         continue;
                     }
                     if !mirrors.contains_key(key) && !dismissed.contains(key) {
-                        match spawn_mirror(&item) {
+                        match spawn_mirror(item) {
                             Ok(mirror) => {
                                 mirrors.insert(key.into(), mirror);
                             }
-                            Err(e) => eprintln!("cross-device popup: {e}"),
+                            Err(e) => {
+                                eprintln!("cross-device popup: {e}");
+                                sync_errors.insert(key.to_string(), e);
+                            }
                         }
                     }
+                }
+            }
+            for (job, keys) in jobs {
+                let ready = keys.iter().all(|key| mirrors.get(key).is_some_and(|m| m.ready_file.is_file()));
+                let result = if let Some(error) = keys.iter().find_map(|key| sync_errors.get(key)) {
+                    Some(json!({"error":format!("打开同步窗口失败：{error}")}))
+                } else if keys.iter().any(|key| dismissed.contains(key) || dir.join("dismissed").join(key).exists()) {
+                    Some(json!({"error":"本次同步的窗口已在本端关闭；需要恢复时请再次点击同步"}))
+                } else if ready {
+                    Some(json!({"count": keys.len()}))
+                } else { None };
+                if let Some(result) = result {
+                    let _ = atomic_json(&job.join("result.json"), &result);
                 }
             }
         }
@@ -654,6 +859,7 @@ pub fn run_daemon(_port: u16) -> anyhow::Result<()> {
             let config = connection_config().map_err(std::io::Error::other)?;
             let app = Router::new()
                 .route("/snapshot", get(snapshot))
+                .route("/sync-windows", post(sync_open_windows))
                 .route("/submit", post(submit_peer))
                 .route("/api/settings-sync/snapshot", post(settings_snapshot)
                     .layer(DefaultBodyLimit::max(settings_sync::MAX_REQUEST_BYTES)))
@@ -726,6 +932,119 @@ pub fn run_daemon(_port: u16) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn registration_lookup_retries_publication_that_races_deferred_read() {
+        let temp = tempfile::tempdir().unwrap();
+        let published = temp.path().join("requests/request.json");
+        let deferred = temp.path().join("deferred-requests/request.json");
+        let mut reg = Registration {
+            key: uuid::Uuid::new_v4().to_string(), origin_device_id: "source".into(),
+            origin_name: "source".into(), request: json!({"message":"pending"}),
+            request_file: temp.path().join("popup.json"), response_file: temp.path().join("response.json"),
+            published: false,
+        };
+        atomic_json(&deferred, &reg).unwrap();
+        // Deterministically complete publication after the destination lookup
+        // misses, but before the deferred read. No timing or thread sleeps.
+        let loaded = load_registration_files(&published, || {
+            reg.published = true;
+            atomic_json(&published, &reg).unwrap();
+            fs::remove_file(&deferred).unwrap();
+            read_json(&deferred)
+        }).unwrap();
+        assert_eq!(loaded.key, reg.key);
+        assert!(loaded.published);
+        assert_eq!(loaded.response_file, reg.response_file);
+    }
+
+    #[test]
+    fn sync_capability_must_be_explicit() {
+        assert!(!supports_window_sync(&json!({"version":2,"config_revision":"same"})));
+        assert!(!supports_window_sync(&json!({"capabilities":["other"]})));
+        assert!(supports_window_sync(&json!({"capabilities":[WINDOW_SYNC_CAPABILITY]})));
+    }
+
+    #[test]
+    fn sync_restores_only_the_dismissal_captured_before_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let key = uuid::Uuid::new_v4().to_string();
+        let keys = HashSet::from([key.clone()]);
+        let mut dismissed = keys.clone();
+        // A close during POST, before the queue starts, must never reopen.
+        let before_close = capture_dismissals(temp.path());
+        record_dismissal(temp.path(), &key).unwrap();
+        restore_dismissals(temp.path(), &keys, &before_close, &mut dismissed);
+        assert!(dismissed.contains(&key));
+        // A normal close is persisted by the popup before daemon reaping.
+        let before_reap = capture_dismissals(temp.path());
+        record_dismissal(temp.path(), &key).unwrap();
+        assert_eq!(before_reap, capture_dismissals(temp.path()));
+        restore_dismissals(temp.path(), &keys, &before_reap, &mut dismissed);
+        assert!(!dismissed.contains(&key));
+        // A second close cannot be cleared by reusing the previous batch.
+        record_dismissal(temp.path(), &key).unwrap();
+        dismissed.insert(key.clone());
+        restore_dismissals(temp.path(), &keys, &before_reap, &mut dismissed);
+        assert!(dismissed.contains(&key));
+        assert!(temp.path().join("dismissed").join(&key).exists());
+    }
+
+    #[tokio::test]
+    async fn offline_windows_are_published_only_by_each_explicit_pull() {
+        let temp = tempfile::tempdir().unwrap();
+        let previous = std::env::var_os("ITERATE_CROSS_DEVICE_DIR");
+        std::env::set_var("ITERATE_CROSS_DEVICE_DIR", temp.path());
+        let local = Settings { device_id: "source".into(), enabled: true };
+        atomic_json(&temp.path().join("settings.json"), &local).unwrap();
+        let state = Arc::new(Broker { token: "test-token".into(), revision: transport::route_key().unwrap(),
+            device_id: local.device_id.clone(), network_ready: std::sync::atomic::AtomicBool::new(true) });
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer test-token".parse().unwrap());
+        let request_file = temp.path().join("request.json");
+        fs::write(&request_file, b"{}").unwrap();
+        let first = Registration { key: uuid::Uuid::new_v4().to_string(), origin_device_id: local.device_id.clone(),
+            origin_name: "source".into(), request: json!({"message":"offline request"}), request_file,
+            response_file: temp.path().join("response.json"), published: false };
+        atomic_json(&first.path().unwrap(), &first).unwrap();
+        first.renew();
+        assert!(snapshot(State(state.clone()), headers.clone()).await.unwrap().0["requests"].as_array().unwrap().is_empty());
+        assert_eq!(sync_open_windows(State(state.clone()), HeaderMap::new()).await.unwrap_err(), StatusCode::UNAUTHORIZED);
+        assert!(!load_registration(&first.key).unwrap().published);
+        // An old daemon scans only requests and ignores the published field.
+        assert!(!temp.path().join("requests").join(format!("{}.json", first.key)).exists());
+        let pulled = sync_open_windows(State(state.clone()), headers.clone()).await.unwrap().0;
+        assert_eq!(pulled["requests"].as_array().unwrap().len(), 1);
+        assert!(load_registration(&first.key).unwrap().published);
+        assert!(!first.path().unwrap().exists());
+
+        // A later offline window is not swept into a previous one-shot pull.
+        let second = Registration { key: uuid::Uuid::new_v4().to_string(), ..first.clone() };
+        atomic_json(&second.path().unwrap(), &second).unwrap();
+        second.renew();
+        assert_eq!(snapshot(State(state.clone()), headers.clone()).await.unwrap().0["requests"].as_array().unwrap().len(), 1);
+        assert!(!load_registration(&second.key).unwrap().published);
+        atomic_json(&temp.path().join("settings.json"), &Settings { enabled: false, ..local.clone() }).unwrap();
+        assert_eq!(sync_open_windows(State(state.clone()), headers.clone()).await.unwrap_err(), StatusCode::CONFLICT);
+        assert!(!load_registration(&second.key).unwrap().published);
+        atomic_json(&temp.path().join("settings.json"), &local).unwrap();
+        for _ in 0..2 {
+            assert_eq!(sync_open_windows(State(state.clone()), headers.clone()).await.unwrap().0["requests"].as_array().unwrap().len(), 2);
+        }
+        // Preserve source registrations made by earlier feature builds.
+        let legacy = Registration { key: uuid::Uuid::new_v4().to_string(), ..first.clone() };
+        atomic_json(&temp.path().join("requests").join(format!("{}.json", legacy.key)), &legacy).unwrap();
+        legacy.renew();
+        assert_eq!(sync_open_windows(State(state.clone()), headers.clone()).await.unwrap().0["requests"].as_array().unwrap().len(), 3);
+        assert!(load_registration(&legacy.key).unwrap().published);
+        legacy.finish();
+        first.finish();
+        assert_eq!(sync_open_windows(State(state), headers).await.unwrap().0["requests"].as_array().unwrap().len(), 1);
+        match previous {
+            Some(value) => std::env::set_var("ITERATE_CROSS_DEVICE_DIR", value),
+            None => std::env::remove_var("ITERATE_CROSS_DEVICE_DIR"),
+        }
+    }
+
     #[tokio::test]
     async fn local_health_requires_authentication_and_a_network_listener() {
         let state = Arc::new(Broker { token: "test-token".into(), revision: "test-revision".into(),
@@ -754,6 +1073,7 @@ mod tests {
             request: json!({}),
             request_file,
             response_file: temp.path().join("response.json"),
+            published: true,
         };
         reg.renew();
         let barrier = Arc::new(std::sync::Barrier::new(3));

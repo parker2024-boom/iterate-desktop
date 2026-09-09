@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { ref } from 'vue'
+import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window'
+import { nextTick, ref } from 'vue'
 import { clearActiveMcpFatalContext, setActiveMcpFatalContext } from '../utils/mcpFatalError'
 import { crossDeviceSendError } from './useCrossDevice'
 import { MCP_DELIVERY_FAILURE, mcpDeliveryError } from './useMcpDelivery'
@@ -298,6 +298,10 @@ export function resolveMcpLaunchContext(): Promise<McpLaunchContext> {
 
 // 静音状态（模块级单例，确保所有调用者共享同一个状态）
 const isMuted = ref(localStorage.getItem(MUTE_STORAGE_KEY) === 'true')
+window.addEventListener('storage', (event) => {
+  if (event.key === MUTE_STORAGE_KEY)
+    isMuted.value = event.newValue === 'true'
+})
 
 /**
  * 切换静音状态
@@ -572,6 +576,12 @@ export function useMcpHandler() {
         try {
           const window = getCurrentWindow()
           await window.minimize()
+          // Windows needs show() for a taskbar entry; macOS show() restores
+          // the miniaturized window, so leave its Dock presentation alone.
+          if (isMcpProcess.value && !navigator.platform.toUpperCase().includes('MAC'))
+            await window.show()
+          if (navigator.platform.toUpperCase().includes('WIN'))
+            await window.requestUserAttention(UserAttentionType.Informational)
         }
         catch (error) {
           console.error('最小化窗口失败:', error)
@@ -581,6 +591,14 @@ export function useMcpHandler() {
         // 正常模式：设置请求数据和显示状态
         mcpRequest.value = routedRequest
         showMcpPopup.value = true
+      }
+      // Standalone windows start hidden: decide their first visible state only
+      // after the shared notification preference and force-popup rules resolve.
+      if (isMcpProcess.value && !isMuted.value) {
+        await nextTick()
+        const window = getCurrentWindow()
+        await window.show()
+        await window.setFocus()
       }
     }
     else {

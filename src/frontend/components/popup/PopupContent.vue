@@ -936,6 +936,7 @@ defineExpose({
         ref="requestContentRef"
         class="markdown-content prose prose-sm max-w-none prose-headings:font-semibold prose-headings:leading-tight prose-h1:!mt-4 prose-h1:!mb-2 prose-h1:!text-lg prose-h1:!font-bold prose-h1:!leading-tight prose-h2:!mt-3 prose-h2:!mb-1.5 prose-h2:!text-base prose-h2:!font-semibold prose-h2:!leading-tight prose-h3:!mt-2.5 prose-h3:!mb-1 prose-h3:!text-sm prose-h3:!font-medium prose-h3:!leading-tight prose-h4:!mt-2 prose-h4:!mb-1 prose-h4:!text-sm prose-h4:!font-medium prose-h4:!leading-tight prose-p:my-1 prose-p:leading-relaxed prose-p:text-sm prose-ul:my-1 prose-ul:text-sm prose-ul:pl-4 prose-ol:my-1 prose-ol:text-sm prose-ol:pl-4 prose-li:my-1 prose-li:text-sm prose-li:leading-relaxed prose-blockquote:my-2 prose-blockquote:text-sm prose-blockquote:pl-4 prose-blockquote:ml-0 prose-blockquote:italic prose-blockquote:border-l-4 prose-blockquote:border-primary-500 prose-pre:relative prose-pre:border prose-pre:rounded-lg prose-pre:p-4 prose-pre:my-3 prose-pre:overflow-x-auto scrollbar-code prose-code:px-1 prose-code:py-0.5 prose-code:text-xs prose-code:cursor-pointer prose-code:font-mono prose-a:text-primary-500 prose-a:no-underline prose-a:cursor-pointer hover:prose-a:underline hover:prose-a:underline-offset-2" :class="[
           currentTheme === 'light' ? 'markdown-content--light' : 'markdown-content--dark',
+          { 'cross-device-note': request.id.startsWith('cross-') && displayMessage.endsWith('注:跨设备来源，仅支持文本和选项') },
           currentTheme === 'light' ? 'prose-slate' : 'prose-invert',
           currentTheme === 'light' ? 'prose-headings:text-gray-900' : 'prose-headings:text-white',
           currentTheme === 'light' ? 'prose-p:text-gray-700' : 'prose-p:text-white prose-p:opacity-85',
@@ -1074,6 +1075,15 @@ defineExpose({
 </template>
 
 <style scoped>
+.cross-device-note :deep(> hr:nth-last-child(2)) {
+  margin-block: 4px;
+}
+
+.cross-device-note :deep(> hr:nth-last-child(2) + p:last-child) {
+  margin-block: 0;
+  line-height: 1.625;
+}
+
 .popup-message-action-button {
   background-color: #ffffff !important;
   border: 1px solid #e5e7eb !important;

@@ -15,6 +15,9 @@ interface ConnectionConfig {
 interface ConfigResult { config: ConnectionConfig, peer_name: string | null }
 const message = useMessage()
 const busy = ref(false)
+const syncingWindows = ref(false)
+const syncError = ref('')
+const syncNotice = ref('')
 const loaded = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -36,7 +39,9 @@ const incomingPeerName = computed(() => {
   }
   catch { return '' }
 })
-watch(config, () => { ownCode.value = '' }, { deep: true })
+watch(config, () => {
+  ownCode.value = ''
+}, { deep: true })
 const status = computed(() => crossState.value.connected
   ? (crossState.value.peer_enabled ? '加密通道已连接，对端已开启' : '加密通道已连接，等待对端开启')
   : '对端未连接')
@@ -135,11 +140,47 @@ async function copyCode() {
   }
 }
 
+async function syncWindows() {
+  if (busy.value || syncingWindows.value)
+    return
+  syncingWindows.value = true
+  syncError.value = ''
+  syncNotice.value = ''
+  try {
+    const result = await invoke<{ count: number }>('sync_cross_device_windows')
+    syncNotice.value = result.count
+      ? `已同步对端 ${result.count} 个窗口，已有窗口不会重复打开。`
+      : '对端没有可同步的待回复窗口。'
+    message.success(syncNotice.value)
+  }
+  catch (cause) {
+    syncError.value = String(cause)
+    message.error(syncError.value)
+  }
+  finally {
+    syncingWindows.value = false
+  }
+}
+
 onMounted(loadSettings)
 </script>
 
 <template>
   <section aria-label="跨设备配置">
+    <div class="mb-4">
+      <n-button type="primary" :loading="syncingWindows" :disabled="syncingWindows || busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" @click="syncWindows">
+        同步对端已打开窗口
+      </n-button>
+      <p class="mt-2 text-xs opacity-75">
+        断线或未连接期间打开的窗口，可在重新连接并开启两端跨设备开关后，点击上方按钮补同步一次。
+      </p>
+      <p v-if="syncError" role="alert" class="mt-2 text-red-500 whitespace-pre-wrap break-all">
+        {{ syncError }}
+      </p>
+      <p v-if="syncNotice" role="status" class="mt-2 text-green-600">
+        {{ syncNotice }}
+      </p>
+    </div>
     <p class="mb-3 text-sm opacity-75">
       这边复制本机配对码，另一端一键粘贴并写入，再反向操作一次。复制时自动保存本机地址，粘贴时自动写入对端地址并检查连接。
     </p>
@@ -173,7 +214,9 @@ onMounted(loadSettings)
         <n-input v-model:value="pairingCode" type="password" show-password-on="click" aria-label="对端配对码" :placeholder="peerName ? `已添加：${peerName}；更换时粘贴新码` : '粘贴另一台设备生成的配对码'" />
       </n-form-item>
     </n-form>
-    <p v-if="incomingPeerName" class="text-sm mb-3">即将添加对端：{{ incomingPeerName }}</p>
+    <p v-if="incomingPeerName" class="text-sm mb-3">
+      即将添加对端：{{ incomingPeerName }}
+    </p>
     <div class="flex flex-wrap gap-2 mb-3">
       <n-button size="small" :disabled="busy || !loaded" @click="ownCode && !hasChanges ? copyCode() : runAction('generate')">
         复制本机配对码
@@ -184,7 +227,7 @@ onMounted(loadSettings)
     </div>
     <n-input v-if="ownCode" :value="ownCode" type="password" show-password-on="click" readonly aria-label="本机配对码" class="mb-3" />
     <p class="text-xs opacity-75 mb-3">
-        配对信息保存在本机 JSON 文件中，不参与设置同步。
+      配对信息保存在本机 JSON 文件中，不参与设置同步。
     </p>
     <p role="status" class="mb-3">
       {{ status }}<span v-if="crossState.connected && crossState.connected_ip"> · {{ crossState.using_backup ? '备用 IP' : '主 IP' }} {{ crossState.connected_ip }}</span><span v-if="peerName"> · 已添加对端 {{ peerName }}</span><span> · 本机提醒{{ crossState.enabled ? '已开启' : '未开启' }}</span>

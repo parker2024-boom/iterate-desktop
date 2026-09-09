@@ -479,7 +479,10 @@ function handleCodexLiveClick() {
           size="small"
           quaternary
           circle
-          :title="props.isMuted ? '通知已静音 (点击开启)' : '通知已开启 (点击静音)'"
+          :title="props.isMuted ? '免打扰已开启（点击恢复弹窗通知）' : '免打扰已关闭（点击暂停弹窗通知）'"
+          :aria-label="props.isMuted ? '免打扰已开启（点击恢复弹窗通知）' : '免打扰已关闭（点击暂停弹窗通知）'"
+          :aria-pressed="props.isMuted"
+          data-guide="notification-mute"
           @click="handleToggleMute"
         >
           <template #icon>
