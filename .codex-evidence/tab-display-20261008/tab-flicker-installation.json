@@ -1,0 +1,17 @@
+{
+    "installed":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.exe",
+    "backup":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.before-tab-flicker-20261009.exe",
+    "previous_hash":  "6923E9EA0BFB14FC7DDB7F676AA0568ED77158F1A20431022C7E45088B3471C1",
+    "installed_hash":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+    "checked_at":  "2026-10-09T09:21:56.1926667+08:00",
+    "editing_windows_preserved":  true,
+    "production_bridge_unchanged":  true,
+    "core_ui_steps_passed":  13,
+    "final_release_click_and_ctrl_tab_transitions":  30,
+    "sample_count":  6416,
+    "gap_samples":  0,
+    "full_release_suite":  "Fail at last reload step; foreign foreground PID15756 not owned",
+    "preflight_debug_suite":  "14 steps/30 transitions Pass",
+    "jev_gate":  "Unavailable; original runtime and configured fresh stdio TypeSafe API returned451",
+    "scope":  "Install within native_make_before_break(1) and popup_tabs_key_capture(1) selected routes; no new code route after JEV unavailable"
+}

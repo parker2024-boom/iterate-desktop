@@ -67,12 +67,12 @@ async function apply() {
 <template>
   <div class="mr-auto">
     <n-button :disabled="busy" @click="showModal = true">
-      从配对端复制设置
+      同步设置
     </n-button>
     <n-modal
       v-model:show="showModal"
       preset="card"
-      title="从配对端复制设置"
+      title="同步设置"
       :bordered="false"
       :mask-closable="!busy"
       :close-on-esc="!busy"
@@ -80,26 +80,26 @@ async function apply() {
       style="width: min(760px, calc(100vw - 32px)); max-height: 90vh; overflow: auto"
     >
       <p class="mb-3 text-sm">
-        用 {{ peerName || '已配对设备' }} 的勾选设置替换本机对应类别。未勾选类别、IP、端口、设备名称、配对信息、账户凭据和本机路径不变。
+        从当前同步来源复制勾选设置。未勾选类别、账户凭据和本机路径保持不变。
       </p>
-      <p class="mb-3 text-sm text-amber-600">同名内容将被覆盖，本机独有条目将被删除；配对端该类别为空时，本机对应类别将被清空。先预览差异，确认后才会替换。</p>
+      <p class="mb-3 text-sm text-amber-600">同名内容将被覆盖，本机独有条目将被删除；同步来源该类别为空时，本机对应类别将被清空。先预览差异，确认后才会替换。</p>
       <n-checkbox-group v-model:value="selected" :disabled="busy">
         <div class="grid grid-cols-2 gap-2 mb-3">
           <n-checkbox v-for="[key, label] in categories" :key="key" :value="key" :label="label" />
         </div>
       </n-checkbox-group>
-      <p v-if="disabled" class="mb-3 text-sm">请先添加对端并保存地址修改，再预览对端设置。</p>
+      <p v-if="disabled" class="mb-3 text-sm">同步通道连接后即可预览设置。</p>
       <n-button :disabled="!canPreview" :loading="busy" @click="loadPreview">预览勾选设置（{{ selected.length }} 项）</n-button>
       <div v-if="preview" class="mt-3">
         <p class="mb-2">来源：{{ preview.snapshot.device_name }}（{{ preview.snapshot.platform }}）</p>
         <p v-if="!preview.differences.length" class="mb-3">勾选设置与本机一致，无需复制。</p>
         <details v-for="difference in preview.differences" :key="difference.category" class="mb-3">
-          <summary class="cursor-pointer">{{ name(difference.category) }} · 查看本机与对端差异</summary>
+          <summary class="cursor-pointer">{{ name(difference.category) }} · 查看设置差异</summary>
           <div class="grid grid-cols-2 gap-2 text-xs mt-2">
             <div>本机<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.local) }}</pre></div>
-            <div>对端<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.incoming) }}</pre></div>
+            <div>同步来源<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.incoming) }}</pre></div>
           </div>
-          <p v-if="difference.conflicts.length" class="text-amber-600">{{ difference.conflicts.length }} 条同名或同标识内容将被配对端版本替换。</p>
+          <p v-if="difference.conflicts.length" class="text-amber-600">{{ difference.conflicts.length }} 条同名或同标识内容将被同步来源版本替换。</p>
         </details>
         <div role="note" class="text-sm text-amber-600 mb-3">
           <p v-for="warning in preview.warnings" :key="warning" class="mb-1">{{ warning }}</p>

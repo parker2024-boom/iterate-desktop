@@ -1,0 +1,35 @@
+{
+    "installed":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.exe",
+    "backup":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.before-send-handoff-20261009.exe",
+    "previous_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+    "installed_sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+    "checked_at":  "2026-10-09T10:24:29.8046845+08:00",
+    "editing_pids_before":  [
+                                22780,
+                                24632,
+                                18352,
+                                15500,
+                                27220,
+                                27620
+                            ],
+    "editing_pids_after":  [
+                               22780,
+                               24632,
+                               18352,
+                               15500,
+                               27220,
+                               27620
+                           ],
+    "editing_windows_preserved":  true,
+    "bridge_restarted":  false,
+    "jev":  "Skipped by explicit user instruction 跳过jev。",
+    "native_tests":  11,
+    "submission_tests":  16,
+    "release_send_cases":  4,
+    "release_regression_steps":  14,
+    "release_regression_switches":  30,
+    "frontend_assets":  70,
+    "task_artifacts":  "G:/DevLocal/BuildTemp/iterate-desktop/send-handoff-20261009",
+    "frontend_output":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/frontend-dist",
+    "cargo_output":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target"
+}

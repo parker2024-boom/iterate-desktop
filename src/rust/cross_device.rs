@@ -38,6 +38,7 @@ fn directory() -> Result<PathBuf> {
 
 pub mod transport;
 pub mod hub_transport;
+mod desktop_hub;
 pub mod settings_sync;
 use transport::{connection_config, credential, local_daemon_ready, peer};
 
@@ -883,14 +884,9 @@ pub async fn submit(response: &Value) -> Result<bool> {
         .ok().is_some_and(|key| !key.is_empty()) { None }
         else { hub_transport::submission_guard(false)? };
     if let Ok(key) = std::env::var("ITERATE_CROSS_DEVICE_MIRROR") {
-        if response.as_str() == Some("CANCELLED")
-            || response.pointer("/metadata/source").and_then(Value::as_str) == Some("popup_closed")
-        {
-            let dir = directory()?;
-            let _guard = lock(&dir, "connection.lock")?;
-            record_dismissal(&dir, &key)?;
-            return Ok(true);
-        }
+        let cancellation = json!({"user_input":"","selected_options":[],"file_paths":[],"image_paths":[],
+            "metadata":{"source":"popup_closed","request_id":format!("cross-{key}")}});
+        let response = if response.as_str() == Some("CANCELLED") { &cancellation } else { response };
         if has_attachments(response) {
             return Err("镜像仅支持文本和选项，请在源设备发送附件".into());
         }
@@ -970,12 +966,19 @@ pub async fn get_cross_device_status() -> Value {
             }));
     if source_pending.is_some() {
         return json!({"enabled":local.enabled,"device_id":local.device_id,"mirror":mirror,
-            "source_pending":source_pending});
+            "source_pending":source_pending,"server_connected":hub_transport::ready()});
     }
-    if let Ok(Some(config))=hub_transport::config().map(|config|config.filter(|_|!mirror)){
-        return json!({"enabled":local.enabled,"device_id":config.device_id,"transport":"cloud_hub","origin_name":connection_config().ok().map(|c|c.device_name),
-            "connected":hub_transport::ready(),"peer_enabled":hub_transport::ready(),"mirror":false,"source_pending":source_pending,
-            "local_only":false,"text_only":std::env::consts::OS=="macos"});
+    if let Ok(Some(config))=hub_transport::config(){
+        let status = desktop_hub::status().await.unwrap_or_else(|error|json!({"connected":false,"error":error}));
+        let mirror_key = std::env::var("ITERATE_CROSS_DEVICE_MIRROR").ok();
+        let remote = if mirror { desktop_hub::snapshot_cached() } else { None };
+        let resolved = mirror_key.as_ref().is_some_and(|key|remote.as_ref()
+            .and_then(|v|v["requests"].as_array()).is_some_and(|items|!items.iter().any(|v|v["key"]==key.as_str())));
+        return json!({"enabled":local.enabled,"device_id":config.device_id,"transport":"cloud_hub","endpoint":config.endpoint,
+            "origin_name":std::env::var("ITERATE_CROSS_DEVICE_ORIGIN_NAME").ok().or_else(||connection_config().ok().map(|c|c.device_name)),
+            "server_connected":hub_transport::ready(),"connected":status["connected"]==true,"peer_enabled":status["peer_enabled"]==true,"peer_name":status["peer_name"],
+            "mirror":mirror,"resolved":resolved,"source_pending":source_pending,"error":status["error"],
+            "local_only":false,"text_only":true});
     }
     let remote = peer("/snapshot", None).await;
     let local_ready = local_daemon_ready().await;
@@ -1082,6 +1085,26 @@ struct Broker {
     revision: String,
     device_id: String,
     network_ready: std::sync::atomic::AtomicBool,
+}
+
+async fn cloud_desktop_dispatch(path:&str,body:Value)->Value {
+    let result: std::result::Result<Json<Value>,StatusCode> = async {
+        let token=transport::credential().map_err(|_|StatusCode::UNAUTHORIZED)?;
+        let state=Arc::new(Broker{token:token.clone(),revision:transport::route_key().map_err(|_|StatusCode::CONFLICT)?,
+            device_id:settings().map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?.device_id,
+            network_ready:std::sync::atomic::AtomicBool::new(true)});
+        let mut headers=HeaderMap::new();
+        headers.insert("authorization",format!("Bearer {token}").parse().map_err(|_|StatusCode::UNAUTHORIZED)?);
+        match path {
+            "/snapshot"=>snapshot(State(state),headers).await,
+            "/sync-windows"=>sync_open_windows(State(state),headers).await,
+            "/submit"=>submit_peer(State(state),headers,Json(body)).await,
+            "/api/settings-sync/snapshot"=>settings_snapshot(State(state),headers,
+                Json(serde_json::from_value(body).map_err(|_|StatusCode::BAD_REQUEST)?)).await,
+            _=>Err(StatusCode::FORBIDDEN),
+        }
+    }.await;
+    match result {Ok(Json(body))=>json!({"status":200,"body":body}),Err(status)=>json!({"status":status.as_u16()})}
 }
 fn authorized(headers: &HeaderMap, state: &Broker) -> bool {
     headers.get("authorization").is_some_and(|header| {
@@ -1394,6 +1417,12 @@ async fn mirror_loop() {
     let mut mirrors: HashMap<String, Mirror> = HashMap::new();
     let mut dismissed: HashSet<String> = HashSet::new();
     loop {
+        if matches!(hub_transport::config(),Ok(Some(_))) {
+            if let Ok(dir)=directory() {
+                let _=atomic_json(&dir.join("desktop-hub-health.json"),&json!({"pid":std::process::id(),
+                    "at":chrono::Utc::now().timestamp(),"revision":transport::route_key().ok()}));
+            }
+        }
         let poll_started = chrono::Utc::now().timestamp_millis();
         let route_key = transport::route_key().ok();
         let snapshot = match peer("/snapshot", None).await {
@@ -1411,6 +1440,10 @@ async fn mirror_loop() {
             };
             if transport::route_key().ok() != route_key {
                 continue;
+            }
+            if matches!(hub_transport::config(),Ok(Some(_))) {
+                let _=atomic_json(&dir.join("desktop-hub-snapshot.json"),&json!({"at":chrono::Utc::now().timestamp(),
+                    "revision":route_key,"snapshot":snapshot}));
             }
             let requests = snapshot
                 .get("requests")
@@ -1538,6 +1571,12 @@ pub fn run_daemon(_port: u16) -> anyhow::Result<()> {
     )
     .map_err(anyhow::Error::msg)?;
     let _ = rustls::crypto::ring::default_provider().install_default();
+    if hub_transport::config().map_err(anyhow::Error::msg)?.is_some() {
+        tokio::runtime::Runtime::new()?.block_on(async {
+            tokio::join!(desktop_hub::relay_loop(),mirror_loop());
+        });
+        return Ok(());
+    }
     tokio::runtime::Runtime::new()?.block_on(async move {
         let task = tokio::spawn(mirror_loop());
         loop {

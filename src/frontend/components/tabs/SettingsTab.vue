@@ -119,14 +119,14 @@ function handleWindowSizeUpdate(size: { width: number, height: number, fixed: bo
         <template #header>
           <div class="flex items-center w-full">
             <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center mr-4">
-              <div class="i-carbon-screen text-lg text-blue-600 dark:text-blue-400" />
+              <div class="i-carbon-cloud text-lg text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <div class="text-lg font-medium tracking-tight mb-1">
-                跨设备提醒
+                公网同步
               </div>
               <div class="text-sm opacity-60 font-normal">
-                本机保存 IP 与配对配置，标题栏一键开启或关闭
+                直接连接公网服务器，使用已配对设备同步窗口
               </div>
             </div>
           </div>

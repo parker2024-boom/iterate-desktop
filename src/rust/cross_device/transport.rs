@@ -123,6 +123,14 @@ fn paired() -> Result<Pairing> {
     serde_json::from_slice(&bytes).map_err(|_| "已保存的配对身份损坏".into())
 }
 
+pub(super) fn cloud_identity()->Result<Value> {
+    let own=identity(false)?;
+    let peer=paired()?;
+    let digest=|token:&str|format!("sha256:{}",hex::encode(ring::digest::digest(&ring::digest::SHA256,token.as_bytes())));
+    Ok(json!({"own_hash":digest(&own.token),"peer_hash":digest(&peer.token),
+        "name":connection_config()?.device_name,"enabled":settings()?.enabled}))
+}
+
 pub(super) fn connection_config() -> Result<ConnectionConfig> {
     let path = directory()?.join("direct-connection.json");
     if path.exists() {
@@ -365,10 +373,11 @@ pub(super) fn route_key() -> Result<String> {
     )))
 }
 pub(super) async fn peer(path: &str, body: Option<&Value>) -> Result<Value> {
-    request(&connection_config()?, &paired()?, path, body).await
+    super::desktop_hub::request(path,body).await
 }
 
 pub(super) async fn local_daemon_ready() -> bool {
+    if matches!(super::hub_transport::config(),Ok(Some(_))) {return super::desktop_hub::daemon_ready();}
     local_daemon_health().await.is_some_and(|value| super::supports_window_sync(&value))
 }
 
@@ -447,6 +456,7 @@ fn pending_requests() -> bool {
 }
 
 pub(super) async fn ensure_daemon() -> Result<()> {
+    super::hub_transport::config()?.ok_or("请先配置公网服务；设备 IP 直连已停用")?;
     if local_daemon_ready().await {
         return Ok(());
     }
@@ -459,7 +469,7 @@ pub(super) async fn ensure_daemon() -> Result<()> {
     // a separate lifetime lock, so a stale PID cannot authorize a process kill.
     let start_guard = lock(&dir, "daemon-start.lock")?;
     if !local_daemon_ready().await {
-        if local_daemon_health().await.is_some_and(|value| !super::supports_window_sync(&value)) {
+        if super::hub_transport::config()?.is_none() && local_daemon_health().await.is_some_and(|value| !super::supports_window_sync(&value)) {
             return Err("本机跨设备服务不支持窗口同步，请更新并重启本机服务后重试".into());
         }
         let executable = std::env::var_os("ITERATE_DIALOG_GUI_EXECUTABLE")
@@ -499,7 +509,7 @@ pub(super) async fn ensure_daemon() -> Result<()> {
             tokio::time::sleep(Duration::from_millis(150)).await;
         }
         if !local_daemon_ready().await {
-            return Err("跨设备接收服务未就绪，请检查本机 IP、端口占用与防火墙".into());
+            return Err("公网同步服务未就绪，请检查公网配置与设备身份".into());
         }
     }
     Ok(())
@@ -509,7 +519,7 @@ pub fn start_if_configured() {
     if matches!(super::hub_transport::config(),Ok(Some(_))) {
         if std::env::consts::OS=="macos" {std::thread::spawn(||{if let Ok(runtime)=tokio::runtime::Runtime::new(){let _=runtime.block_on(super::hub_transport::ensure_source());}});}
     }
-    if directory().is_ok_and(|dir| dir.join("direct-connection.json").is_file()) {
+    if matches!(super::hub_transport::config(),Ok(Some(_))) && directory().is_ok_and(|dir| dir.join("direct-connection.json").is_file()) {
         std::thread::spawn(|| {
             if let Ok(runtime) = tokio::runtime::Runtime::new() {
                 let _ = runtime.block_on(ensure_daemon());
@@ -523,7 +533,8 @@ pub async fn get_cross_device_config() -> Result<Value> {
     let config = connection_config()?;
     let peer = paired().ok();
     Ok(
-        json!({"config":config,"peer_name":peer.as_ref().map(|p| &p.name),"peer_device_id":peer.as_ref().map(|p| &p.device_id)}),
+        json!({"config":config,"peer_name":peer.as_ref().map(|p| &p.name),"peer_device_id":peer.as_ref().map(|p| &p.device_id),
+            "transport":"cloud_hub","endpoint":super::hub_transport::config()?.map(|c|c.endpoint)}),
     )
 }
 
@@ -531,11 +542,13 @@ pub async fn get_cross_device_config() -> Result<Value> {
 pub async fn generate_cross_device_pairing() -> Result<String> {
     let config = validate(connection_config()?)?;
     if !directory()?.join("direct-connection.json").exists() {
-        return Err("请先保存本机 IP 和端口".into());
+        return Err("请先保存本机名称".into());
     }
     let own = identity(true)?;
     ensure_daemon().await?;
-    let ips = ip_list(&config.listen_ip)?;
+    // Legacy v2 pairing envelopes remain readable. These placeholder addresses
+    // are never used by the public transport and require no device IP input.
+    let ips = vec![Ipv4Addr::LOCALHOST];
     let pair = Pairing {
         version: 2,
         device_id: settings()?.device_id,
@@ -586,7 +599,7 @@ pub async fn save_cross_device_config(
     if changed && pending_requests() {
         return Err("还有未完成的跨设备请求，请先处理完再更换地址、端口或配对信息".into());
     }
-    if previous.listen_ip != config.listen_ip || previous.listen_port != config.listen_port {
+    if super::hub_transport::config()?.is_none() && (previous.listen_ip != config.listen_ip || previous.listen_port != config.listen_port) {
         let available = local_ips(&config.listen_ip)?;
         if available.is_empty() {
             return Err("本机地址列表须包含至少一个当前网卡 IP；路由器公网 IP 需映射到该地址。原配置未更改".into());
@@ -748,6 +761,12 @@ pub async fn test_cross_device_connection(
     config: ConnectionConfig,
     pairing_code: Option<String>,
 ) -> Result<Value> {
+    if super::hub_transport::config()?.is_some() {
+        ensure_daemon().await?;
+        let response=peer("/snapshot",None).await?;
+        return Ok(json!({"message":format!("公网连接成功，已验证对端：{}",response["device_name"].as_str().unwrap_or("对端")),
+            "device_id":response["device_id"]}));
+    }
     let mut config = validate(config)?;
     let pair = match pairing_code.filter(|code| !code.trim().is_empty()) {
         Some(code) => decode_pairing(&code)?,

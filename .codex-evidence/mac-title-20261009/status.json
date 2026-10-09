@@ -1,0 +1,131 @@
+{
+    "task":  "mac-title-and-windows-mirror",
+    "status":  "installed-functionally-user-accepted-formal-review-unresolved",
+    "mac_title":  "installed; source/published/tab/native title and local send Pass",
+    "windows_mirror":  "installed; automatic Mac delivery, native Windows title, physical input and send, exact Mac HTTP reply Pass",
+    "credential_restart":  "new installed daemon PID20296 started with source-token environment absent and connected; JEV latest verified confidence0.79 requires review",
+    "tests":  "6 credential tests + 2 title tests passed; 0 failed",
+    "task_outputs":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009",
+    "build_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+    "windows_package":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/iterate-title-and-relay.exe",
+    "mac_package":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/iterate-title.gz",
+    "mac_signing_stage":  "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-title-20261009",
+    "backups":  {
+                    "windows":  "C:/Users/liguo/AppData/Local/iterate/iterate.before-mac-title-relay-20261009.exe",
+                    "mac":  "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-title-20261009/installed-before-title-fix.app"
+                },
+    "evidence":  {
+                     "mac_native":  "mac-installed.log",
+                     "windows_native":  "windows-mirror-ui-final.json",
+                     "cross_reply":  "mac-windows-e2e-r4.log",
+                     "restart":  "windows-restart.json",
+                     "unit_credentials":  "rust-credentials-edges.log",
+                     "unit_title":  "rust-title-final.log"
+                 },
+    "jev":  {
+                "route":  "normalize_source_before_publish;restore_and_load_saved_credential",
+                "supplement_rounds":  2,
+                "action":  "escalate",
+                "reason_codes":  [
+                                     "review_escalated",
+                                     "claim_confidence_below_auto_accept"
+                                 ],
+                "review":  {
+                               "safe_to_apply":  0.49,
+                               "scores":  {
+                                              "correctness":  {
+                                                                  "score":  1.87,
+                                                                  "confidence":  0.82
+                                                              },
+                                              "spec_match":  {
+                                                                 "score":  1.89,
+                                                                 "confidence":  0.82
+                                                             },
+                                              "test_gap":  {
+                                                               "score":  0.76,
+                                                               "confidence":  0.41
+                                                           },
+                                              "blast_radius":  {
+                                                                   "score":  1.64,
+                                                                   "confidence":  0.47
+                                                               }
+                                          },
+                               "weights":  {
+                                               "correctness":  0.4,
+                                               "spec_match":  0.3,
+                                               "test_gap":  0.15,
+                                               "blast_radius":  0.15
+                                           },
+                               "thresholds":  {
+                                                  "auto_accept":  0.8,
+                                                  "review_at":  0.5,
+                                                  "composite_floor":  0.7
+                                              },
+                               "action":  "escalate",
+                               "composite":  0.7775
+                           },
+                "unresolved":  "test_gap confidence0.41;blast_radius confidence0.47;safe_to_apply0.49;credential restart claim confidence0.79. No concrete defect supplied. Preserve review escalation after two supplementation rounds; no lower thresholds.",
+                "followup":  "Runtime acceptance complete; formal patch review remains unresolved."
+            },
+    "harness_failures":  "Product native acceptance passed. Extra diagnostic read used an already-finished user window and failed with zero HWND; no mutation occurred. Remote harness path copy and PowerShell parse prerequisites corrected before final acceptance.",
+    "owned_test_mirror_remaining":  0,
+    "phone_followup":  "phone-status.json;phone title and Mac single-window tabs user accepted; review unresolved",
+    "windows_grouping":  {
+                             "route_confidence":  1,
+                             "preserved_actual_mirror_pid":  25324,
+                             "jev_route":  "profile_group_and_taskbar",
+                             "cause":  "popup_tabs group and lock scoped by inherited TEMP; local and receiver use different TEMP",
+                             "state":  "User accepted: same window, one taskbar entry",
+                             "user_confirmation":  "Windows taskbar two entries; screenshot local Windows window separate from Mac A/B tab group",
+                             "artifact":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile/iterate-windows-first-frame.exe",
+                             "installed_sha256":  "91B304F9B20EEC145EB6CC97EFB9D6DAABA4C4955B639D0F5D6D49ADDE69502E",
+                             "review":  {
+                                            "verification":  "6 verified, auto",
+                                            "action":  "escalate",
+                                            "evidence":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile/windows-group-review.json",
+                                            "test_gap_confidence":  0.34,
+                                            "supplement_rounds":  1,
+                                            "blast_radius_confidence":  0.35,
+                                            "limitation":  "Formal patch review remains unresolved; no concrete defect supplied; thresholds unchanged",
+                                            "safe_to_apply":  0.21
+                                        },
+                             "native_evidence":  [
+                                                     "windows-group-latest.json",
+                                                     "installed-local-and-mac.json",
+                                                     "windows-group-mac-reply.json",
+                                                     "mac-installed-group.log",
+                                                     "windows-tabs-restart.json"
+                                                 ],
+                             "daemon_pid":  13492,
+                             "user_feedback":  "已在同一窗口，任务栏一个入口；切换有点闪窗"
+                         },
+    "flash_followup":  {
+                           "native":  "8 switches functional Pass; first fixed 32x32 probe had one bright226 frame among52, others23; no background exposure",
+                           "preserved_user_mirror":  8408,
+                           "dwm_route":  "disable_tab_window_transitions confidence.95 accepted",
+                           "dwm_installed_sha":  "7146585DD41F91E6D86F8E2325E5E67A64F155CDBBE2FC4A91665097AF179589",
+                           "user_feedback":  "切换有点闪窗",
+                           "review":  "Latest gate/supplement retained as escalate; functional native and user acceptance complete",
+                           "demo_session":  null,
+                           "first_frame_route":  "keep_background_tabs_unminimized confidence.98 accepted",
+                           "first_frame_state":  "User selected切换平稳了; complete native workflow Pass; installed91B304; all owned test popups and source runtime requests cleaned/archived",
+                           "demo_run":  "window-demo-59bbf235",
+                           "build_session":  null,
+                           "latest_artifact":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile/iterate-windows-first-frame.exe",
+                           "latest_sha":  "91B304F9B20EEC145EB6CC97EFB9D6DAABA4C4955B639D0F5D6D49ADDE69502E",
+                           "latest_review":  {
+                                                 "limitation":  "Formal patch review remains unresolved. Direct raw user feedback and deterministic native evidence retained; no thresholds lowered or broad no-flash guarantee.",
+                                                 "action":  "escalate",
+                                                 "correctness_confidence":  0.8,
+                                                 "evidence":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile/windows-first-frame-user-acceptance.json",
+                                                 "test_gap_confidence":  0.69,
+                                                 "safe_to_apply":  0.4,
+                                                 "verification":  "6verified;2require-review(.66 samples,.72 user feedback)",
+                                                 "blast_radius_confidence":  0.34,
+                                                 "supplement_rounds":  1
+                                             },
+                           "daemon_pid":  5400
+                       },
+    "windows_current_package":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile/iterate-windows-first-frame.exe",
+    "frontend_outputs":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/frontend-dist"
+}

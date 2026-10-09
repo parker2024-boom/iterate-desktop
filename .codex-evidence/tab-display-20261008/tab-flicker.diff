@@ -1,0 +1,173 @@
+--- src/rust/ui/popup_tabs.rs (before)
++++ src/rust/ui/popup_tabs.rs (after)
+@@ -166,8 +166,51 @@
+ }
+ 
+ fn apply_geometry(window: &tauri::WebviewWindow, g: &Geometry) -> Result<(), String> {
+-    window.set_position(tauri::PhysicalPosition::new(g.x, g.y)).map_err(|e| e.to_string())?;
+-    window.set_size(tauri::PhysicalSize::new(g.width, g.height)).map_err(|e| e.to_string())
++    if window.outer_position().map_or(true, |p| p.x != g.x || p.y != g.y) {
++        window.set_position(tauri::PhysicalPosition::new(g.x, g.y)).map_err(|e| e.to_string())?;
++    }
++    if window.inner_size().map_or(true, |s| s.width != g.width || s.height != g.height) {
++        window.set_size(tauri::PhysicalSize::new(g.width, g.height)).map_err(|e| e.to_string())?;
++    }
++    Ok(())
++}
++
++fn is_visible(window: &tauri::WebviewWindow) -> bool {
++    #[cfg(target_os = "windows")]
++    { window.hwnd().is_ok_and(|handle| unsafe {
++        windows_sys::Win32::UI::WindowsAndMessaging::IsWindowVisible(handle.0) != 0
++    }) }
++    #[cfg(not(target_os = "windows"))]
++    { window.is_visible().unwrap_or(false) }
++}
++
++#[cfg(target_os = "windows")]
++fn tab_window_visible(pid: u32) -> bool {
++    use windows_sys::Win32::Foundation::{HWND, LPARAM};
++    use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW,
++        GetWindowThreadProcessId, IsIconic, IsWindowVisible};
++    struct Search { pid: u32, visible: bool }
++    unsafe extern "system" fn inspect(hwnd: HWND, data: LPARAM) -> i32 {
++        let search = &mut *(data as *mut Search);
++        let mut owner = 0;
++        GetWindowThreadProcessId(hwnd, &mut owner);
++        if owner == search.pid {
++            let mut class = [0u16; 32];
++            let len = GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32);
++            if len > 0 && class[..len as usize].iter().copied().eq("Tauri Window".encode_utf16()) {
++                search.visible = IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0;
++                return 0;
++            }
++        }
++        1
++    }
++    let mut search = Search { pid, visible: false };
++    unsafe { EnumWindows(Some(inspect), &mut search as *mut Search as LPARAM); }
++    search.visible
++}
++
++fn handoff_ready(active_pid: Option<u32>, destination_visible: bool) -> bool {
++    active_pid.is_none() || destination_visible
+ }
+ 
+ fn hide(window: &tauri::WebviewWindow) -> Result<(), String> {
+@@ -264,7 +307,7 @@
+             // inter-process file lock while waiting for that thread: a UI
+             // command may itself be waiting to update the tab group.
+             let current_geometry = if previous.mode == PopupDisplayMode::Tabs
+-                && previous.active_pid == Some(pid) && window.is_visible().unwrap_or(false)
++                && previous.active_pid == Some(pid) && is_visible(&window)
+                 && !window.is_minimized().unwrap_or(false) {
+                 geometry(&window)
+             } else { None };
+@@ -282,7 +325,15 @@
+             let was_tabs = previous.mode == PopupDisplayMode::Tabs;
+             let visibility_result = if tabs && !active {
+                 if !was_tabs { split_geometry = geometry(&window); }
+-                hide(&window)
++                // The destination runs in another process with an independent
++                // polling phase. Keep covering the desktop until its native
++                // window is actually shown, including older popup versions.
++                #[cfg(target_os = "windows")]
++                let ready = handoff_ready(group.active_pid,
++                    group.active_pid.is_some_and(tab_window_visible));
++                #[cfg(not(target_os = "windows"))]
++                let ready = true;
++                if ready && is_visible(&window) { hide(&window) } else { Ok(()) }
+             } else if tabs && active && (!was_active || !was_tabs) {
+                 if !was_tabs { split_geometry = geometry(&window); }
+                 group.geometry.as_ref().map(|g| apply_geometry(&window, g)).transpose()
+@@ -330,15 +381,19 @@
+ #[tauri::command]
+ pub fn select_popup_tab(app: AppHandle, pid: u32) -> Result<Snapshot, String> {
+     let window = app.get_webview_window("main").ok_or("窗口不存在")?;
++    let current_geometry = geometry(&window);
+     let group = update(|group| {
+         if group.mode != PopupDisplayMode::Tabs { return Err("当前未使用标签页显示".into()); }
+         if group.active_pid != Some(std::process::id()) { return Err("请从当前标签切换".into()); }
++        if !group.tabs.iter().any(|tab| tab.pid == pid) { return Err("该标签已关闭".into()); }
++        // The destination must have permission before its worker observes the
++        // new selection and attempts foreground activation.
++        #[cfg(target_os = "windows")]
++        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(pid); }
+         group.select(pid)?;
+-        group.geometry = geometry(&window);
++        group.geometry = current_geometry;
+         Ok(())
+     })?;
+-    #[cfg(target_os = "windows")]
+-    unsafe { windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(pid); }
+     // Keep the source window until the destination's native worker presents it.
+     // No form remount, clipboard transfer, or response route mutation occurs.
+     Ok(group.snapshot())
+@@ -450,4 +505,15 @@
+         assert!(!may_handoff_focus(true, 123, Some(124)));
+         assert!(!may_handoff_focus(true, 123, None));
+     }
+-}
++
++    #[test]
++    fn handoff_keeps_source_until_destination_is_presented() {
++        assert!(!handoff_ready(Some(2), false));
++        assert!(handoff_ready(Some(2), true));
++        // If a failed destination disappears, reconciliation can select
++        // another live tab; that window must also be shown before hiding.
++        assert!(!handoff_ready(Some(3), false));
++        assert!(handoff_ready(Some(3), true));
++        assert!(handoff_ready(None, false));
++    }
++}
+--- src/frontend/components/popup/PopupTabs.vue (before)
++++ src/frontend/components/popup/PopupTabs.vue (after)
+@@ -13,6 +13,7 @@
+ let unlisten: (() => void) | undefined
+ let disposed = false
+ onMounted(async () => {
++  window.addEventListener('keydown', handleTabSwitchKeydown, true)
+   const stop = await listen<Snapshot>('popup-tabs-changed', (event) => {
+     snapshot.value = event.payload
+   })
+@@ -30,8 +31,23 @@
+ })
+ onUnmounted(() => {
+   disposed = true
++  window.removeEventListener('keydown', handleTabSwitchKeydown, true)
+   unlisten?.()
+ })
++function handleTabSwitchKeydown(event: KeyboardEvent) {
++  if (!visible.value || !document.hasFocus() || event.isComposing
++    || event.key !== 'Tab' || !event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) {
++    return
++  }
++  event.preventDefault()
++  event.stopPropagation()
++  const state = snapshot.value
++  if (event.repeat || !state || state.active_pid !== state.current_pid || state.tabs.length < 2)
++    return
++  const current = state.tabs.findIndex(tab => tab.pid === state.current_pid)
++  if (current >= 0)
++    void select(state.tabs[(current + 1) % state.tabs.length])
++}
+ async function select(tab: Tab) {
+   if (tab.pid === snapshot.value?.current_pid)
+     return
+--- src/frontend/components/AppContent.vue (before)
++++ src/frontend/components/AppContent.vue (after)
+@@ -1143,14 +1143,6 @@
+   if (event.key === 'Tab' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && props.showMcpPopup) {
+     event.preventDefault()
+     restoreWindow()
+-    return
+-  }
+-
+-  // Tab 键最小化当前弹窗 - 仅在 MCP 弹窗显示时生效
+-  // 排除 Cmd/Ctrl/Alt 等系统组合键
+-  if (event.key === 'Tab' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && props.showMcpPopup) {
+-    event.preventDefault()
+-    minimizeWindow()
+     return
+   }
+ 

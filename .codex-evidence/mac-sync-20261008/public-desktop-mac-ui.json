@@ -1,0 +1,125 @@
+{
+  "mac_install": {
+    "result": "Pass",
+    "stage": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/close-tabs-r2/Iterate Cross Device.app",
+    "sha256": "a40eeee2794b923ff8ee8f9762362b572235fb9aa3b8bd852f6aadcf8efdafe5",
+    "certificate_sha1": "CF5D88FB8C77C4ED6BEBBE4A9503DACEAA0D2BE7",
+    "production_changed": true,
+    "installed": true,
+    "backup": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/close-tabs-r2/installed-before-close-tabs.app",
+    "daemon_pid": 17524,
+    "peer_status": {
+      "connected": true,
+      "enabled": true,
+      "peer_enabled": true,
+      "peer_name": "windows"
+    },
+    "preserved_pids": [
+      603,
+      66258,
+      37308
+    ],
+    "device_listener_5540": false,
+    "relay_restart_deferred": false
+  },
+  "mac_tabs_config": {
+    "result": "Pass",
+    "config": "/Users/parker/Library/Application Support/iterate-cross-device/config/config.json",
+    "previous_mode": "windows",
+    "popup_display_mode": "tabs",
+    "other_settings_preserved": true,
+    "backup": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/mac-config-before-tabs.json"
+  },
+  "mac_tabs_live": {
+    "result": "Pass",
+    "config_mode": "tabs",
+    "live_state": "/var/folders/bq/hjv9k46s7sx8bgfvb2x70zmm0000gp/T/iterate_popup_tabs.json",
+    "previous_live_mode": "windows",
+    "live_mode": "tabs",
+    "active_preserved": true,
+    "request_count": 1
+  },
+  "mac_ui": {
+    "result": "Pass",
+    "scope": "Real installed Mac source GUI and Windows mirror over production HTTPS Hub",
+    "serve_pid": 18132,
+    "port": 60482,
+    "source_key": "a066ecae-3277-45ce-9a0c-55cdd29a7842",
+    "source_pid": 18135,
+    "source_visible": true,
+    "title": "Public Mac close tabs 220a49e6",
+    "mac_tabs": {
+      "mode": "tabs",
+      "active_pid": 18135,
+      "focus_pid": null,
+      "geometry": {
+        "x": 48,
+        "y": 90,
+        "width": 1200,
+        "height": 1800
+      },
+      "tabs": [
+        {
+          "pid": 18135,
+          "request_id": "serve-1791529545045-c53a0ca0-2a32-4d33-a283-40aacedea0d3",
+          "title": "Public Mac close tabs 220a49e6",
+          "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+          "registered_at": "2026-10-09T07:05:48.363046+00:00",
+          "unread": false
+        },
+        {
+          "pid": 18220,
+          "request_id": "serve-1791529549416-4f912db0-866e-413c-ac57-141b3a02a54d",
+          "title": "Public Mac close tabs 220a49e6 keep",
+          "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+          "registered_at": "2026-10-09T07:05:54.032249+00:00",
+          "unread": true
+        }
+      ]
+    },
+    "second_source_pid": 18220,
+    "second_key": "89884971-ee54-407e-be6e-20a1840adeb8",
+    "second_title": "Public Mac close tabs 220a49e6 keep",
+    "mac_active_visible": true,
+    "mac_background_hidden": true,
+    "run": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+    "reply": {
+      "keep_going": false,
+      "user_input": "",
+      "response_source": "popup_closed",
+      "selected_options": [],
+      "file_paths": [],
+      "image_paths": [],
+      "metadata": {
+        "timestamp": "2026-10-09T07:06:45.225Z",
+        "request_id": "serve-1791529545045-c53a0ca0-2a32-4d33-a283-40aacedea0d3",
+        "source": "popup_closed",
+        "hui_snapshot": null,
+        "conversation_id": null,
+        "tree_id": null,
+        "current_node_id": null,
+        "node_id": null,
+        "parent_node_id": null,
+        "timeline_route_id": null,
+        "conversation_route_id": null,
+        "request_key": null,
+        "actual_request_id": null,
+        "run_id": "cross-device-reply:a066ecae-3277-45ce-9a0c-55cdd29a7842",
+        "generation": null,
+        "stale_of": null,
+        "superseded_by": null
+      }
+    },
+    "source_closed": true,
+    "unrelated_request_preserved": true,
+    "remaining_mac_tab_visible": true
+  },
+  "current": {
+    "popup_display_mode": "tabs",
+    "hub_source_age_seconds": 2,
+    "relay_age_seconds": 2,
+    "daemon_pid": 17524,
+    "peer_connected": true,
+    "system_settings_process_running": false
+  }
+}

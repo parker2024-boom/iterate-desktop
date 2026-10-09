@@ -1,0 +1,756 @@
+diff --git a/src/frontend/components/AppContent.vue b/src/frontend/components/AppContent.vue
+index 8d8d0fa..892fa3c 100644
+--- a/src/frontend/components/AppContent.vue
++++ b/src/frontend/components/AppContent.vue
+@@ -1085,9 +1085,6 @@ watch(() => props.mcpRequest, async (newRequest) => {
+     showPopupSettings.value = false
+   }
+ 
+-  await syncConversationRequestNode(newRequest)
+-  await refreshNativeHistoryBinding()
+-
+   const nextProjectPath = resolveDisplayProjectPath(newRequest)
+   if (nextProjectPath && nextProjectPath !== lastValidProjectPath.value) {
+     lastValidProjectPath.value = nextProjectPath
+@@ -1095,14 +1092,14 @@ watch(() => props.mcpRequest, async (newRequest) => {
+   }
+ 
+   // 更新窗口注册（使用新的项目路径）
+-  if (nextProjectPath) {
+-    try {
+-      await syncWindowRegistration(nextProjectPath, newRequest)
+-    }
+-    catch (error) {
+-      console.error('更新窗口注册失败:', error)
+-    }
++  try {
++    await syncWindowRegistration(nextProjectPath, newRequest)
++  }
++  catch (error) {
++    console.error('更新窗口注册失败:', error)
+   }
++  await syncConversationRequestNode(newRequest)
++  await refreshNativeHistoryBinding()
+ }, { immediate: true, deep: true })
+ 
+ // 全局键盘事件处理器
+@@ -1294,6 +1291,13 @@ watch(() => props.showMcpPopup, async (newValue) => {
+ })
+ 
+ onMounted(async () => {
++  // Tab admission must complete even when a history or Bridge read fails.
++  try {
++    await syncWindowRegistration(effectiveProjectPath.value, props.mcpRequest)
++  }
++  catch (error) {
++    console.error('注册窗口实例失败:', error)
++  }
+   // 将消息实例传递给父组件
+   emit('messageReady', message)
+   await showPostUpdateAutomationNotice()
+@@ -1673,14 +1677,6 @@ onMounted(async () => {
+     }
+   })
+ 
+-  // 注册当前窗口实例
+-  try {
+-    await syncWindowRegistration(effectiveProjectPath.value, props.mcpRequest)
+-  }
+-  catch (error) {
+-    console.error('注册窗口实例失败:', error)
+-  }
+-
+   // 窗口恢复时立即补偿拉取缓存的 action（防止最小化期间 throttle 导致延迟）
+   visibilityHandler = () => {
+     if (document.visibilityState === 'visible') {
+diff --git a/src/frontend/components/common/CrossDeviceSettings.vue b/src/frontend/components/common/CrossDeviceSettings.vue
+index d03659d..a3584be 100644
+--- a/src/frontend/components/common/CrossDeviceSettings.vue
++++ b/src/frontend/components/common/CrossDeviceSettings.vue
+@@ -1,254 +1,70 @@
+ <script setup lang="ts">
+ import { invoke } from '@tauri-apps/api/core'
+ import { useMessage } from 'naive-ui'
+-import { computed, onMounted, ref, watch } from 'vue'
+-import { refreshCrossDevice, useCrossDevice } from '../../composables/useCrossDevice'
++import { computed, onMounted, ref } from 'vue'
++import { useCrossDevice } from '../../composables/useCrossDevice'
+ import SyncSettingsPreview from './SyncSettingsPreview.vue'
+ 
+-interface ConnectionConfig {
+-  device_name: string
+-  listen_ip: string
+-  listen_port: number
+-  peer_host: string
+-  peer_port: number
+-}
+-interface ConfigResult { config: ConnectionConfig, peer_name: string | null }
+ const message = useMessage()
+ const busy = ref(false)
+-const syncingWindows = ref(false)
+-const syncError = ref('')
+-const syncNotice = ref('')
+-const loaded = ref(false)
++const endpoint = ref<string | null>(null)
+ const error = ref('')
+ const notice = ref('')
+-const peerName = ref<string | null>(null)
+-const pairingCode = ref('')
+-const ownCode = ref('')
+-const savedConfig = ref('')
+-const config = ref<ConnectionConfig>({ device_name: '', listen_ip: '', listen_port: 5540, peer_host: '', peer_port: 5540 })
+-const { crossState } = useCrossDevice()
+-const hasChanges = computed(() => JSON.stringify(config.value) !== savedConfig.value)
+-const incomingPeerName = computed(() => {
+-  try {
+-    const code = pairingCode.value.trim()
+-    if (!code.startsWith('iterate-pair-v2:'))
+-      return ''
+-    const bytes = Uint8Array.from(atob(code.slice('iterate-pair-v2:'.length)), char => char.charCodeAt(0))
+-    const pair = JSON.parse(new TextDecoder().decode(bytes))
+-    return typeof pair.name === 'string' ? pair.name.slice(0, 64) : ''
+-  }
+-  catch { return '' }
+-})
+-watch(config, () => {
+-  ownCode.value = ''
+-}, { deep: true })
+-const status = computed(() => crossState.value.connected
+-  ? (crossState.value.peer_enabled ? '加密通道已连接，对端已开启' : '加密通道已连接，等待对端开启')
+-  : '对端未连接')
++const { crossState, crossBusy, serverTitle, toggleCrossDevice } = useCrossDevice()
++const available = computed(() => !!endpoint.value && crossState.value.connected)
+ 
+-async function loadSettings() {
+-  busy.value = true
+-  loaded.value = false
+-  error.value = ''
+-  notice.value = ''
+-  pairingCode.value = ''
+-  ownCode.value = ''
++onMounted(async () => {
+   try {
+-    const result = await invoke<ConfigResult>('get_cross_device_config')
+-    config.value = result.config
+-    peerName.value = result.peer_name
+-    savedConfig.value = JSON.stringify(result.config)
+-    loaded.value = true
++    const result = await invoke<{ endpoint?: string | null }>('get_cross_device_config')
++    endpoint.value = result.endpoint || null
+   }
+   catch (cause) { error.value = String(cause) }
+-  finally { busy.value = false }
+-}
++})
+ 
+-async function runAction(action: 'save' | 'test' | 'generate' | 'pair' | 'paste') {
+-  if (busy.value || !loaded.value)
+-    return
+-  if (![config.value.listen_port, config.value.peer_port].every(port => Number.isInteger(port) && port >= 1 && port <= 65535)) {
+-    error.value = '端口须为 1–65535'
++async function refreshWindows() {
++  if (busy.value)
+     return
+-  }
+   busy.value = true
+   error.value = ''
+   notice.value = ''
+-  const importing = action === 'pair' || action === 'paste'
+-  let imported = false
+-  try {
+-    if (action === 'paste') {
+-      const clipboard = await invoke<string | null>('plugin:clipboard-manager|read_text')
+-      pairingCode.value = clipboard?.trim() || ''
+-      if (!pairingCode.value)
+-        throw new Error('剪贴板为空，请先在另一端复制本机配对码。')
+-    }
+-    if (importing && !pairingCode.value.trim().startsWith('iterate-pair-v2:'))
+-      throw new Error('剪贴板内容不是 iterate 配对码，请在另一端点击“复制本机配对码”。')
+-    if (action !== 'test') {
+-      const result = await invoke<ConfigResult>('save_cross_device_config', {
+-        config: importing ? { ...config.value, peer_host: '', backup_peer_host: '' } : config.value,
+-        pairingCode: importing ? pairingCode.value.trim() : null,
+-      })
+-      config.value = result.config
+-      peerName.value = result.peer_name
+-      savedConfig.value = JSON.stringify(result.config)
+-      ownCode.value = ''
+-      if (importing) {
+-        imported = true
+-        pairingCode.value = ''
+-        notice.value = `已添加对端 ${peerName.value || ''}，正在检查连接。`
+-      }
+-      else {
+-        notice.value = '本机地址已保存，接收服务已就绪。'
+-      }
+-    }
+-    if (action === 'generate') {
+-      ownCode.value = await invoke<string>('generate_cross_device_pairing')
+-      await copyCode()
+-    }
+-    else if (action === 'test' || importing) {
+-      const result = await invoke<{ message: string }>('test_cross_device_connection', { config: config.value, pairingCode: null })
+-      notice.value = result.message
+-      if (importing)
+-        message.success(`已写入对端配置并连接：${peerName.value || '对端'}`)
+-    }
+-  }
+-  catch (cause) {
+-    error.value = String(cause)
+-    if (imported) {
+-      notice.value = '对端资料已保存，连接检查未通过。请确认另一端也已导入本机配对码，且地址可达。'
+-      message.warning('对端配置已写入，连接尚未成功')
+-    }
+-    else { message.error(String(cause)) }
+-  }
+-  finally {
+-    busy.value = false
+-    void refreshCrossDevice().catch(() => {})
+-  }
+-}
+-
+-async function copyCode() {
+-  try {
+-    await invoke('plugin:clipboard-manager|write_text', { text: ownCode.value })
+-    notice.value = ''
+-    message.success('本机配对码已复制，在另一端点击“一键粘贴并写入”')
+-  }
+-  catch {
+-    error.value = '复制失败，请选中配对码手动复制。'
+-    message.error(error.value)
+-  }
+-}
+-
+-async function syncWindows() {
+-  if (busy.value || syncingWindows.value)
+-    return
+-  syncingWindows.value = true
+-  syncError.value = ''
+-  syncNotice.value = ''
+   try {
+     const result = await invoke<{ count: number }>('sync_cross_device_windows')
+-    syncNotice.value = result.count
+-      ? `已同步对端 ${result.count} 个窗口，已有窗口不会重复打开。`
+-      : '对端没有可同步的待回复窗口。'
+-    message.success(syncNotice.value)
+-  }
+-  catch (cause) {
+-    syncError.value = String(cause)
+-    message.error(syncError.value)
+-  }
+-  finally {
+-    syncingWindows.value = false
++    notice.value = result.count ? `已同步 ${result.count} 个窗口，已有窗口不会重复打开。` : '没有可同步的待回复窗口。'
++    message.success(notice.value)
+   }
++  catch (cause) { error.value = String(cause) }
++  finally { busy.value = false }
+ }
+-
+-onMounted(loadSettings)
+ </script>
+ 
+ <template>
+-  <section aria-label="跨设备配置">
+-    <div class="mb-4">
+-      <n-button type="primary" :loading="syncingWindows" :disabled="syncingWindows || busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" @click="syncWindows">
+-        同步对端已打开窗口
+-      </n-button>
+-      <p class="mt-2 text-xs opacity-75">
+-        断线或未连接期间打开的待回复窗口，会在重新连接并开启两端跨设备开关后自动同步。已在本端关闭的窗口，可点击上方按钮恢复。
+-      </p>
+-      <p v-if="syncError" role="alert" class="mt-2 text-red-500 whitespace-pre-wrap break-all">
+-        {{ syncError }}
+-      </p>
+-      <p v-if="syncNotice" role="status" class="mt-2 text-green-600">
+-        {{ syncNotice }}
+-      </p>
++  <section aria-label="公网同步设置">
++    <div class="mb-3 flex items-center gap-2">
++      <span>窗口同步</span>
++      <n-switch :value="crossState.enabled" :loading="crossBusy" @update:value="toggleCrossDevice" />
+     </div>
+-    <p class="mb-3 text-sm opacity-75">
+-      这边复制本机配对码，另一端一键粘贴并写入，再反向操作一次。复制时自动保存本机地址，粘贴时自动写入对端地址并检查连接。
++    <p role="status" class="mb-3">
++      {{ serverTitle }}
+     </p>
+-    <n-form label-placement="top" size="small" :disabled="busy || !loaded" :show-feedback="false">
+-      <n-form-item label="本机名称" class="mb-3">
+-        <n-input v-model:value="config.device_name" aria-label="本机名称" placeholder="例如：办公电脑" :maxlength="64" />
+-      </n-form-item>
+-      <div class="flex gap-3 mb-3">
+-        <n-form-item label="本机 IP（主 / 备用 / …）" class="flex-1">
+-          <n-input v-model:value="config.listen_ip" aria-label="本机 IP" placeholder="192.168.1.10/10.8.0.4/公网 IP" />
+-        </n-form-item>
+-        <n-form-item label="接收端口" style="width: 110px">
+-          <n-input-number v-model:value="config.listen_port" aria-label="接收端口" :min="1" :max="65535" :precision="0" :show-button="false" />
+-        </n-form-item>
+-      </div>
+-      <p class="mb-3 text-xs opacity-75">
+-        本机列表包含各工作环境的网卡、VPN 或公网 IP，须包含当前网卡地址。公网地址需在路由器映射到本机接收端口；切换网络后自动使用当前可用的本机地址。
+-      </p>
+-      <div class="flex gap-3 mb-3">
+-        <n-form-item label="对端 IP（主 / 备用 / …）" class="flex-1">
+-          <n-input v-model:value="config.peer_host" aria-label="对端 IP" placeholder="192.168.1.20/10.8.0.3/公网 IP；也可导入配对码" />
+-        </n-form-item>
+-        <n-form-item label="对端端口" style="width: 110px">
+-          <n-input-number v-model:value="config.peer_port" aria-label="对端端口" :min="1" :max="65535" :precision="0" :show-button="false" />
+-        </n-form-item>
+-      </div>
+-      <p class="mb-3 text-xs opacity-75">
+-        按填写顺序连接，当前地址不通时尝试下一项；各地址使用同一端口，均须通向同一台已配对设备。
+-      </p>
+-      <n-form-item label="对端配对码" class="mb-3">
+-        <n-input v-model:value="pairingCode" type="password" show-password-on="click" aria-label="对端配对码" :placeholder="peerName ? `已添加：${peerName}；更换时粘贴新码` : '粘贴另一台设备生成的配对码'" />
++    <n-form label-placement="top" size="small" :show-feedback="false">
++      <n-form-item label="公网服务" class="mb-3">
++        <span>{{ endpoint || '尚未配置公网服务' }}</span>
+       </n-form-item>
+     </n-form>
+-    <p v-if="incomingPeerName" class="text-sm mb-3">
+-      即将添加对端：{{ incomingPeerName }}
++    <p class="mb-3 text-sm opacity-75">
++      通过公网自动同步待回复窗口；完成或关闭后，同一请求的窗口一起清除。
+     </p>
+-    <div class="flex flex-wrap gap-2 mb-3">
+-      <n-button size="small" :disabled="busy || !loaded" @click="ownCode && !hasChanges ? copyCode() : runAction('generate')">
+-        复制本机配对码
+-      </n-button>
+-      <n-button type="primary" size="small" :loading="busy" :disabled="!loaded" @click="runAction('paste')">
+-        一键粘贴并写入
++    <div class="flex flex-wrap items-center gap-2">
++      <n-button :loading="busy" :disabled="busy || !available" @click="refreshWindows">
++        刷新窗口
+       </n-button>
++      <SyncSettingsPreview :disabled="busy || !available" :peer-name="null" />
+     </div>
+-    <n-input v-if="ownCode" :value="ownCode" type="password" show-password-on="click" readonly aria-label="本机配对码" class="mb-3" />
+-    <p class="text-xs opacity-75 mb-3">
+-      配对信息保存在本机 JSON 文件中，不参与设置同步。
+-    </p>
+-    <p role="status" class="mb-3">
+-      {{ status }}<span v-if="crossState.connected && crossState.connected_ip"> · {{ crossState.using_backup ? '备用 IP' : '主 IP' }} {{ crossState.connected_ip }}</span><span v-if="peerName"> · 已添加对端 {{ peerName }}</span><span> · 本机提醒{{ crossState.enabled ? '已开启' : '未开启' }}</span>
+-    </p>
+-    <p v-if="error" role="alert" class="mb-3 text-red-500 whitespace-pre-wrap break-all">
++    <p v-if="error" role="alert" class="mt-3 text-red-500 whitespace-pre-wrap break-all">
+       {{ error }}
+     </p>
+-    <p v-if="notice" role="status" class="mb-3 text-green-600">
++    <p v-if="notice" role="status" class="mt-3 text-green-600">
+       {{ notice }}
+     </p>
+-    <div class="flex flex-wrap items-center justify-end gap-2">
+-      <SyncSettingsPreview :disabled="busy || !loaded || !peerName || hasChanges || !!pairingCode.trim()" :peer-name="peerName" />
+-      <n-button v-if="peerName && !pairingCode.trim()" :loading="busy" :disabled="!loaded || hasChanges" @click="runAction('test')">
+-        重新检查连接
+-      </n-button>
+-      <n-button v-if="peerName && hasChanges && !pairingCode.trim()" :loading="busy" :disabled="!loaded" @click="runAction('save')">
+-        保存修改
+-      </n-button>
+-      <n-button v-if="pairingCode.trim()" type="primary" :loading="busy" :disabled="!loaded" @click="runAction('pair')">
+-        写入并连接
+-      </n-button>
+-    </div>
+   </section>
+ </template>
+diff --git a/src/frontend/components/common/CrossDeviceToggle.vue b/src/frontend/components/common/CrossDeviceToggle.vue
+index 45b91a9..3d3a153 100644
+--- a/src/frontend/components/common/CrossDeviceToggle.vue
++++ b/src/frontend/components/common/CrossDeviceToggle.vue
+@@ -2,22 +2,21 @@
+ import { computed } from 'vue'
+ import { useCrossDevice } from '../../composables/useCrossDevice'
+ 
+-const { crossState, crossBusy, crossTitle, crossColor, toggleCrossDevice } = useCrossDevice()
+-const phase = computed(() => !crossState.value.enabled ? 'off' : crossState.value.connected && crossState.value.peer_enabled ? 'connected' : 'enabled')
++const { crossState, serverTitle } = useCrossDevice()
++const phase = computed(() => crossState.value.server_connected ? 'connected' : 'disconnected')
+ </script>
+ 
+ <template>
+-  <n-button
+-    size="small" circle :loading="crossBusy"
+-    :title="crossTitle" :aria-label="crossTitle" :aria-pressed="crossState.enabled"
+-    :style="`background-color: ${crossColor} !important; color: #fff !important;`"
+-    :data-state="phase" data-testid="cross-device-toggle" @click="toggleCrossDevice"
++  <span
++    class="inline-flex h-8 w-8 items-center justify-center rounded-full"
++    :class="phase === 'connected' ? 'text-green-600' : 'text-gray-500'"
++    :title="serverTitle" :aria-label="serverTitle" role="status"
++    :data-state="phase" data-testid="server-connection-status"
+   >
+     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+-      <rect x="1" y="3" width="9" height="8" rx="1.2" />
+-      <path d="M5.5 11v3M2.5 14h6M10 7h4" />
+-      <rect x="14" y="8" width="9" height="8" rx="1.2" />
+-      <path d="M18.5 16v3M15.5 19h6" />
++      <rect x="4" y="3" width="16" height="8" rx="2" />
++      <rect x="4" y="13" width="16" height="8" rx="2" />
++      <path d="M8 7h.01M8 17h.01M12 7h4M12 17h4" />
+     </svg>
+-  </n-button>
++  </span>
+ </template>
+diff --git a/src/frontend/components/common/SyncSettingsPreview.vue b/src/frontend/components/common/SyncSettingsPreview.vue
+index 4539d48..f8a34a2 100644
+--- a/src/frontend/components/common/SyncSettingsPreview.vue
++++ b/src/frontend/components/common/SyncSettingsPreview.vue
+@@ -67,12 +67,12 @@ async function apply() {
+ <template>
+   <div class="mr-auto">
+     <n-button :disabled="busy" @click="showModal = true">
+-      从配对端复制设置
++      同步设置
+     </n-button>
+     <n-modal
+       v-model:show="showModal"
+       preset="card"
+-      title="从配对端复制设置"
++      title="同步设置"
+       :bordered="false"
+       :mask-closable="!busy"
+       :close-on-esc="!busy"
+@@ -80,26 +80,26 @@ async function apply() {
+       style="width: min(760px, calc(100vw - 32px)); max-height: 90vh; overflow: auto"
+     >
+       <p class="mb-3 text-sm">
+-        用 {{ peerName || '已配对设备' }} 的勾选设置替换本机对应类别。未勾选类别、IP、端口、设备名称、配对信息、账户凭据和本机路径不变。
++        从当前同步来源复制勾选设置。未勾选类别、账户凭据和本机路径保持不变。
+       </p>
+-      <p class="mb-3 text-sm text-amber-600">同名内容将被覆盖，本机独有条目将被删除；配对端该类别为空时，本机对应类别将被清空。先预览差异，确认后才会替换。</p>
++      <p class="mb-3 text-sm text-amber-600">同名内容将被覆盖，本机独有条目将被删除；同步来源该类别为空时，本机对应类别将被清空。先预览差异，确认后才会替换。</p>
+       <n-checkbox-group v-model:value="selected" :disabled="busy">
+         <div class="grid grid-cols-2 gap-2 mb-3">
+           <n-checkbox v-for="[key, label] in categories" :key="key" :value="key" :label="label" />
+         </div>
+       </n-checkbox-group>
+-      <p v-if="disabled" class="mb-3 text-sm">请先添加对端并保存地址修改，再预览对端设置。</p>
++      <p v-if="disabled" class="mb-3 text-sm">同步通道连接后即可预览设置。</p>
+       <n-button :disabled="!canPreview" :loading="busy" @click="loadPreview">预览勾选设置（{{ selected.length }} 项）</n-button>
+       <div v-if="preview" class="mt-3">
+         <p class="mb-2">来源：{{ preview.snapshot.device_name }}（{{ preview.snapshot.platform }}）</p>
+         <p v-if="!preview.differences.length" class="mb-3">勾选设置与本机一致，无需复制。</p>
+         <details v-for="difference in preview.differences" :key="difference.category" class="mb-3">
+-          <summary class="cursor-pointer">{{ name(difference.category) }} · 查看本机与对端差异</summary>
++          <summary class="cursor-pointer">{{ name(difference.category) }} · 查看设置差异</summary>
+           <div class="grid grid-cols-2 gap-2 text-xs mt-2">
+             <div>本机<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.local) }}</pre></div>
+-            <div>对端<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.incoming) }}</pre></div>
++            <div>同步来源<pre class="whitespace-pre-wrap break-all max-h-64 overflow-auto">{{ pretty(difference.incoming) }}</pre></div>
+           </div>
+-          <p v-if="difference.conflicts.length" class="text-amber-600">{{ difference.conflicts.length }} 条同名或同标识内容将被配对端版本替换。</p>
++          <p v-if="difference.conflicts.length" class="text-amber-600">{{ difference.conflicts.length }} 条同名或同标识内容将被同步来源版本替换。</p>
+         </details>
+         <div role="note" class="text-sm text-amber-600 mb-3">
+           <p v-for="warning in preview.warnings" :key="warning" class="mb-1">{{ warning }}</p>
+diff --git a/src/frontend/components/tabs/SettingsTab.vue b/src/frontend/components/tabs/SettingsTab.vue
+index cca11fa..3483937 100644
+--- a/src/frontend/components/tabs/SettingsTab.vue
++++ b/src/frontend/components/tabs/SettingsTab.vue
+@@ -119,14 +119,14 @@ function handleWindowSizeUpdate(size: { width: number, height: number, fixed: bo
+         <template #header>
+           <div class="flex items-center w-full">
+             <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center mr-4">
+-              <div class="i-carbon-screen text-lg text-blue-600 dark:text-blue-400" />
++              <div class="i-carbon-cloud text-lg text-blue-600 dark:text-blue-400" />
+             </div>
+             <div>
+               <div class="text-lg font-medium tracking-tight mb-1">
+-                跨设备提醒
++                公网同步
+               </div>
+               <div class="text-sm opacity-60 font-normal">
+-                本机保存 IP 与配对配置，标题栏一键开启或关闭
++                直接连接公网服务器，使用已配对设备同步窗口
+               </div>
+             </div>
+           </div>
+diff --git a/src/frontend/composables/useCrossDevice.ts b/src/frontend/composables/useCrossDevice.ts
+index 7de37b8..4b8ca78 100644
+--- a/src/frontend/composables/useCrossDevice.ts
++++ b/src/frontend/composables/useCrossDevice.ts
+@@ -5,6 +5,7 @@ import { publishCompletedMcpRequest } from '../services/bridgeRequestClosure'
+ interface CrossDeviceStatus {
+   enabled: boolean
+   connected: boolean
++  server_connected?: boolean
+   connected_ip?: string
+   using_backup?: boolean
+   peer_enabled?: boolean
+@@ -41,7 +42,7 @@ export async function refreshCrossDevice() {
+       await invoke('exit_app')
+   }
+   catch (error) {
+-    state.value = { ...state.value, connected: false, error: String(error) }
++    state.value = { ...state.value, connected: false, server_connected: false, error: String(error) }
+   }
+   finally { reading = false }
+ }
+@@ -69,6 +70,7 @@ export function useCrossDevice() {
+     return state.value.local_only ? '跨设备已开启 · 本次请求仅在本机处理（新请求生效；附件不镜像）' : '跨设备已开启 · 两端已连接，点击关闭'
+   })
+   const color = computed(() => !state.value.enabled ? '#4b5563' : state.value.connected && state.value.peer_enabled ? '#15803d' : '#b45309')
++  const serverTitle = computed(() => state.value.server_connected ? '服务器已连接' : '服务器未连接')
+   async function toggle() {
+     if (busy.value)
+       return
+@@ -81,5 +83,5 @@ export function useCrossDevice() {
+     }
+     finally { busy.value = false }
+   }
+-  return { crossState: state, crossBusy: busy, crossTitle: title, crossColor: color, toggleCrossDevice: toggle }
++  return { crossState: state, crossBusy: busy, crossTitle: title, crossColor: color, serverTitle, toggleCrossDevice: toggle }
+ }
+diff --git a/src/rust/cross_device.rs b/src/rust/cross_device.rs
+index c1d67a2..1f17ad0 100644
+--- a/src/rust/cross_device.rs
++++ b/src/rust/cross_device.rs
+@@ -38,6 +38,7 @@ fn directory() -> Result<PathBuf> {
+ 
+ pub mod transport;
+ pub mod hub_transport;
++mod desktop_hub;
+ pub mod settings_sync;
+ use transport::{connection_config, credential, local_daemon_ready, peer};
+ 
+@@ -883,14 +884,9 @@ pub async fn submit(response: &Value) -> Result<bool> {
+         .ok().is_some_and(|key| !key.is_empty()) { None }
+         else { hub_transport::submission_guard(false)? };
+     if let Ok(key) = std::env::var("ITERATE_CROSS_DEVICE_MIRROR") {
+-        if response.as_str() == Some("CANCELLED")
+-            || response.pointer("/metadata/source").and_then(Value::as_str) == Some("popup_closed")
+-        {
+-            let dir = directory()?;
+-            let _guard = lock(&dir, "connection.lock")?;
+-            record_dismissal(&dir, &key)?;
+-            return Ok(true);
+-        }
++        let cancellation = json!({"user_input":"","selected_options":[],"file_paths":[],"image_paths":[],
++            "metadata":{"source":"popup_closed","request_id":format!("cross-{key}")}});
++        let response = if response.as_str() == Some("CANCELLED") { &cancellation } else { response };
+         if has_attachments(response) {
+             return Err("镜像仅支持文本和选项，请在源设备发送附件".into());
+         }
+@@ -970,12 +966,19 @@ pub async fn get_cross_device_status() -> Value {
+             }));
+     if source_pending.is_some() {
+         return json!({"enabled":local.enabled,"device_id":local.device_id,"mirror":mirror,
+-            "source_pending":source_pending});
+-    }
+-    if let Ok(Some(config))=hub_transport::config().map(|config|config.filter(|_|!mirror)){
+-        return json!({"enabled":local.enabled,"device_id":config.device_id,"transport":"cloud_hub","origin_name":connection_config().ok().map(|c|c.device_name),
+-            "connected":hub_transport::ready(),"peer_enabled":hub_transport::ready(),"mirror":false,"source_pending":source_pending,
+-            "local_only":false,"text_only":std::env::consts::OS=="macos"});
++            "source_pending":source_pending,"server_connected":hub_transport::ready()});
++    }
++    if let Ok(Some(config))=hub_transport::config(){
++        let status = desktop_hub::status().await.unwrap_or_else(|error|json!({"connected":false,"error":error}));
++        let mirror_key = std::env::var("ITERATE_CROSS_DEVICE_MIRROR").ok();
++        let remote = if mirror { desktop_hub::snapshot_cached() } else { None };
++        let resolved = mirror_key.as_ref().is_some_and(|key|remote.as_ref()
++            .and_then(|v|v["requests"].as_array()).is_some_and(|items|!items.iter().any(|v|v["key"]==key.as_str())));
++        return json!({"enabled":local.enabled,"device_id":config.device_id,"transport":"cloud_hub","endpoint":config.endpoint,
++            "origin_name":std::env::var("ITERATE_CROSS_DEVICE_ORIGIN_NAME").ok().or_else(||connection_config().ok().map(|c|c.device_name)),
++            "server_connected":hub_transport::ready(),"connected":status["connected"]==true,"peer_enabled":status["peer_enabled"]==true,"peer_name":status["peer_name"],
++            "mirror":mirror,"resolved":resolved,"source_pending":source_pending,"error":status["error"],
++            "local_only":false,"text_only":true});
+     }
+     let remote = peer("/snapshot", None).await;
+     let local_ready = local_daemon_ready().await;
+@@ -1083,6 +1086,26 @@ struct Broker {
+     device_id: String,
+     network_ready: std::sync::atomic::AtomicBool,
+ }
++
++async fn cloud_desktop_dispatch(path:&str,body:Value)->Value {
++    let result: std::result::Result<Json<Value>,StatusCode> = async {
++        let token=transport::credential().map_err(|_|StatusCode::UNAUTHORIZED)?;
++        let state=Arc::new(Broker{token:token.clone(),revision:transport::route_key().map_err(|_|StatusCode::CONFLICT)?,
++            device_id:settings().map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?.device_id,
++            network_ready:std::sync::atomic::AtomicBool::new(true)});
++        let mut headers=HeaderMap::new();
++        headers.insert("authorization",format!("Bearer {token}").parse().map_err(|_|StatusCode::UNAUTHORIZED)?);
++        match path {
++            "/snapshot"=>snapshot(State(state),headers).await,
++            "/sync-windows"=>sync_open_windows(State(state),headers).await,
++            "/submit"=>submit_peer(State(state),headers,Json(body)).await,
++            "/api/settings-sync/snapshot"=>settings_snapshot(State(state),headers,
++                Json(serde_json::from_value(body).map_err(|_|StatusCode::BAD_REQUEST)?)).await,
++            _=>Err(StatusCode::FORBIDDEN),
++        }
++    }.await;
++    match result {Ok(Json(body))=>json!({"status":200,"body":body}),Err(status)=>json!({"status":status.as_u16()})}
++}
+ fn authorized(headers: &HeaderMap, state: &Broker) -> bool {
+     headers.get("authorization").is_some_and(|header| {
+         ring::constant_time::verify_slices_are_equal(
+@@ -1394,6 +1417,12 @@ async fn mirror_loop() {
+     let mut mirrors: HashMap<String, Mirror> = HashMap::new();
+     let mut dismissed: HashSet<String> = HashSet::new();
+     loop {
++        if matches!(hub_transport::config(),Ok(Some(_))) {
++            if let Ok(dir)=directory() {
++                let _=atomic_json(&dir.join("desktop-hub-health.json"),&json!({"pid":std::process::id(),
++                    "at":chrono::Utc::now().timestamp(),"revision":transport::route_key().ok()}));
++            }
++        }
+         let poll_started = chrono::Utc::now().timestamp_millis();
+         let route_key = transport::route_key().ok();
+         let snapshot = match peer("/snapshot", None).await {
+@@ -1412,6 +1441,10 @@ async fn mirror_loop() {
+             if transport::route_key().ok() != route_key {
+                 continue;
+             }
++            if matches!(hub_transport::config(),Ok(Some(_))) {
++                let _=atomic_json(&dir.join("desktop-hub-snapshot.json"),&json!({"at":chrono::Utc::now().timestamp(),
++                    "revision":route_key,"snapshot":snapshot}));
++            }
+             let requests = snapshot
+                 .get("requests")
+                 .and_then(Value::as_array)
+@@ -1538,6 +1571,12 @@ pub fn run_daemon(_port: u16) -> anyhow::Result<()> {
+     )
+     .map_err(anyhow::Error::msg)?;
+     let _ = rustls::crypto::ring::default_provider().install_default();
++    if hub_transport::config().map_err(anyhow::Error::msg)?.is_some() {
++        tokio::runtime::Runtime::new()?.block_on(async {
++            tokio::join!(desktop_hub::relay_loop(),mirror_loop());
++        });
++        return Ok(());
++    }
+     tokio::runtime::Runtime::new()?.block_on(async move {
+         let task = tokio::spawn(mirror_loop());
+         loop {
+diff --git a/src/rust/cross_device/hub_transport.rs b/src/rust/cross_device/hub_transport.rs
+index ab71655..bf2936c 100644
+--- a/src/rust/cross_device/hub_transport.rs
++++ b/src/rust/cross_device/hub_transport.rs
+@@ -26,6 +26,12 @@ pub fn config() -> Result<Option<HubConfig>> {
+ }
+ 
+ pub(crate) fn data_directory() -> Result<PathBuf> { directory() }
++pub(super) async fn desktop_call(path:&str,body:&Value)->Result<Value> {
++    let config=config()?.ok_or("请先配置公网服务")?;
++    let client=Client::new(config)?;
++    // Relay management calls never touch the long-running source session.
++    client.call(path,Some(body)).await
++}
+ pub(crate) fn ready() -> bool {
+     directory().ok().and_then(|d|read_json::<Value>(&d.join("hub-source-health.json")).ok())
+         .is_some_and(|v|v["at"].as_i64().is_some_and(|at|at+10>=chrono::Utc::now().timestamp()))
+diff --git a/src/rust/cross_device/transport.rs b/src/rust/cross_device/transport.rs
+index fe6b112..a92e9d0 100644
+--- a/src/rust/cross_device/transport.rs
++++ b/src/rust/cross_device/transport.rs
+@@ -123,6 +123,14 @@ fn paired() -> Result<Pairing> {
+     serde_json::from_slice(&bytes).map_err(|_| "已保存的配对身份损坏".into())
+ }
+ 
++pub(super) fn cloud_identity()->Result<Value> {
++    let own=identity(false)?;
++    let peer=paired()?;
++    let digest=|token:&str|format!("sha256:{}",hex::encode(ring::digest::digest(&ring::digest::SHA256,token.as_bytes())));
++    Ok(json!({"own_hash":digest(&own.token),"peer_hash":digest(&peer.token),
++        "name":connection_config()?.device_name,"enabled":settings()?.enabled}))
++}
++
+ pub(super) fn connection_config() -> Result<ConnectionConfig> {
+     let path = directory()?.join("direct-connection.json");
+     if path.exists() {
+@@ -365,10 +373,11 @@ pub(super) fn route_key() -> Result<String> {
+     )))
+ }
+ pub(super) async fn peer(path: &str, body: Option<&Value>) -> Result<Value> {
+-    request(&connection_config()?, &paired()?, path, body).await
++    super::desktop_hub::request(path,body).await
+ }
+ 
+ pub(super) async fn local_daemon_ready() -> bool {
++    if matches!(super::hub_transport::config(),Ok(Some(_))) {return super::desktop_hub::daemon_ready();}
+     local_daemon_health().await.is_some_and(|value| super::supports_window_sync(&value))
+ }
+ 
+@@ -447,6 +456,7 @@ fn pending_requests() -> bool {
+ }
+ 
+ pub(super) async fn ensure_daemon() -> Result<()> {
++    super::hub_transport::config()?.ok_or("请先配置公网服务；设备 IP 直连已停用")?;
+     if local_daemon_ready().await {
+         return Ok(());
+     }
+@@ -459,7 +469,7 @@ pub(super) async fn ensure_daemon() -> Result<()> {
+     // a separate lifetime lock, so a stale PID cannot authorize a process kill.
+     let start_guard = lock(&dir, "daemon-start.lock")?;
+     if !local_daemon_ready().await {
+-        if local_daemon_health().await.is_some_and(|value| !super::supports_window_sync(&value)) {
++        if super::hub_transport::config()?.is_none() && local_daemon_health().await.is_some_and(|value| !super::supports_window_sync(&value)) {
+             return Err("本机跨设备服务不支持窗口同步，请更新并重启本机服务后重试".into());
+         }
+         let executable = std::env::var_os("ITERATE_DIALOG_GUI_EXECUTABLE")
+@@ -499,7 +509,7 @@ pub(super) async fn ensure_daemon() -> Result<()> {
+             tokio::time::sleep(Duration::from_millis(150)).await;
+         }
+         if !local_daemon_ready().await {
+-            return Err("跨设备接收服务未就绪，请检查本机 IP、端口占用与防火墙".into());
++            return Err("公网同步服务未就绪，请检查公网配置与设备身份".into());
+         }
+     }
+     Ok(())
+@@ -509,7 +519,7 @@ pub fn start_if_configured() {
+     if matches!(super::hub_transport::config(),Ok(Some(_))) {
+         if std::env::consts::OS=="macos" {std::thread::spawn(||{if let Ok(runtime)=tokio::runtime::Runtime::new(){let _=runtime.block_on(super::hub_transport::ensure_source());}});}
+     }
+-    if directory().is_ok_and(|dir| dir.join("direct-connection.json").is_file()) {
++    if matches!(super::hub_transport::config(),Ok(Some(_))) && directory().is_ok_and(|dir| dir.join("direct-connection.json").is_file()) {
+         std::thread::spawn(|| {
+             if let Ok(runtime) = tokio::runtime::Runtime::new() {
+                 let _ = runtime.block_on(ensure_daemon());
+@@ -523,7 +533,8 @@ pub async fn get_cross_device_config() -> Result<Value> {
+     let config = connection_config()?;
+     let peer = paired().ok();
+     Ok(
+-        json!({"config":config,"peer_name":peer.as_ref().map(|p| &p.name),"peer_device_id":peer.as_ref().map(|p| &p.device_id)}),
++        json!({"config":config,"peer_name":peer.as_ref().map(|p| &p.name),"peer_device_id":peer.as_ref().map(|p| &p.device_id),
++            "transport":"cloud_hub","endpoint":super::hub_transport::config()?.map(|c|c.endpoint)}),
+     )
+ }
+ 
+@@ -531,11 +542,13 @@ pub async fn get_cross_device_config() -> Result<Value> {
+ pub async fn generate_cross_device_pairing() -> Result<String> {
+     let config = validate(connection_config()?)?;
+     if !directory()?.join("direct-connection.json").exists() {
+-        return Err("请先保存本机 IP 和端口".into());
++        return Err("请先保存本机名称".into());
+     }
+     let own = identity(true)?;
+     ensure_daemon().await?;
+-    let ips = ip_list(&config.listen_ip)?;
++    // Legacy v2 pairing envelopes remain readable. These placeholder addresses
++    // are never used by the public transport and require no device IP input.
++    let ips = vec![Ipv4Addr::LOCALHOST];
+     let pair = Pairing {
+         version: 2,
+         device_id: settings()?.device_id,
+@@ -586,7 +599,7 @@ pub async fn save_cross_device_config(
+     if changed && pending_requests() {
+         return Err("还有未完成的跨设备请求，请先处理完再更换地址、端口或配对信息".into());
+     }
+-    if previous.listen_ip != config.listen_ip || previous.listen_port != config.listen_port {
++    if super::hub_transport::config()?.is_none() && (previous.listen_ip != config.listen_ip || previous.listen_port != config.listen_port) {
+         let available = local_ips(&config.listen_ip)?;
+         if available.is_empty() {
+             return Err("本机地址列表须包含至少一个当前网卡 IP；路由器公网 IP 需映射到该地址。原配置未更改".into());
+@@ -748,6 +761,12 @@ pub async fn test_cross_device_connection(
+     config: ConnectionConfig,
+     pairing_code: Option<String>,
+ ) -> Result<Value> {
++    if super::hub_transport::config()?.is_some() {
++        ensure_daemon().await?;
++        let response=peer("/snapshot",None).await?;
++        return Ok(json!({"message":format!("公网连接成功，已验证对端：{}",response["device_name"].as_str().unwrap_or("对端")),
++            "device_id":response["device_id"]}));
++    }
+     let mut config = validate(config)?;
+     let pair = match pairing_code.filter(|code| !code.trim().is_empty()) {
+         Some(code) => decode_pairing(&code)?,

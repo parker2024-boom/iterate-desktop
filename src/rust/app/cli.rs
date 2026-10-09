@@ -1486,7 +1486,7 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
             request.message.len()
         ),
     );
-    let mcp_request = serde_json::json!({
+    let mut mcp_request = serde_json::json!({
         "id": request_id,
         "parent_request_id": if parent_request_id.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(parent_request_id.clone()) },
         "message": request.message,
@@ -1504,6 +1504,9 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
         "loop_active": request.loop_active,
         "force_popup": request.force_popup
     });
+    // Older MCP processes may send a progress title. Resolve the real name
+    // before persisting or publishing so local and mirrored tabs agree.
+    crate::mcp::conversation_title::normalize_local_request(&mut mcp_request);
 
     let temp_dir = std::env::temp_dir();
     let request_file = temp_dir.join(format!("iterate_request_{}.json", request_id));

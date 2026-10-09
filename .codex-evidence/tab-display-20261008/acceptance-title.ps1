@@ -1,0 +1,370 @@
+﻿param([Parameter(Mandatory=$true)][string]$Executable,[string]$TaskDir='G:/DevLocal/BuildTemp/iterate-desktop/tab-display-20261008',[switch]$LeaveOpen,[switch]$ObserveOnly,[string]$LegacyTargetExecutable)
+$ErrorActionPreference='Stop'
+New-Item -ItemType Directory -Path "$TaskDir/temp" -Force | Out-Null
+$env:TEMP="$TaskDir/temp"
+$env:TMP=$env:TEMP
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Windows.Forms,System.Drawing
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class TabNative {
+ [StructLayout(LayoutKind.Sequential)] public struct Key {public ushort vk,scan;public uint flags,time;public UIntPtr extra;}
+ [StructLayout(LayoutKind.Explicit,Size=32)] public struct Data {[FieldOffset(0)]public Key key;}
+ [StructLayout(LayoutKind.Sequential)] public struct Input {public uint type;public Data data;}
+ [DllImport("user32.dll")] public static extern uint SendInput(uint count,Input[] inputs,int size);
+ public static void Type(string value){
+  var inputs=new List<Input>();
+  foreach(char c in value){foreach(uint flags in new uint[]{4,6})inputs.Add(new Input{type=1,data=new Data{key=new Key{scan=c,flags=flags}}});}
+  if(SendInput((uint)inputs.Count,inputs.ToArray(),Marshal.SizeOf(typeof(Input)))!=inputs.Count)throw new Exception("Unicode input injection failed");
+ }
+ public delegate bool EnumProc(IntPtr hwnd, IntPtr data);
+ [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr data);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+ [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
+ public static void CtrlTab(){
+  var inputs=new Input[]{
+   new Input{type=1,data=new Data{key=new Key{vk=17}}},
+   new Input{type=1,data=new Data{key=new Key{vk=9}}},
+   new Input{type=1,data=new Data{key=new Key{vk=9,flags=2}}},
+   new Input{type=1,data=new Data{key=new Key{vk=17,flags=2}}}
+  };
+  if(SendInput(4,inputs,Marshal.SizeOf(typeof(Input)))!=4)throw new Exception("Ctrl+Tab input injection failed");
+ }
+ public static void PlainTab(){
+  var inputs=new Input[]{new Input{type=1,data=new Data{key=new Key{vk=9}}},new Input{type=1,data=new Data{key=new Key{vk=9,flags=2}}}};
+  if(SendInput(2,inputs,Marshal.SizeOf(typeof(Input)))!=2)throw new Exception("Tab input injection failed");
+ }
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+ [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+ [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
+ [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd,uint flags);
+ [StructLayout(LayoutKind.Sequential)] public struct Point {public int x,y;public Point(int px,int py){x=px;y=py;}}
+ [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int cx,int cy,uint flags);
+ [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd,StringBuilder name,int size);
+ public static IntPtr Window(int target) {
+  IntPtr result=IntPtr.Zero;
+  EnumWindows((h,d)=>{uint pid;GetWindowThreadProcessId(h,out pid);
+   var name=new StringBuilder(128);GetClassName(h,name,128);
+   if(pid==target && name.ToString()=="Tauri Window"){result=h;return false;}return true;},IntPtr.Zero);
+  return result;
+ }
+}
+
+public sealed class TabTransitionMonitor {
+ [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint period);
+ [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint period);
+ public sealed class Sample { public double milliseconds; public bool source_visible,target_visible; }
+ readonly IntPtr source,target;
+ readonly System.Diagnostics.Stopwatch clock=System.Diagnostics.Stopwatch.StartNew();
+ readonly List<Sample> samples=new List<Sample>();
+ readonly System.Threading.Thread thread;
+ volatile bool running=true;
+ public TabTransitionMonitor(long a,long b) {
+  timeBeginPeriod(1);
+  source=new IntPtr(a);target=new IntPtr(b);
+  thread=new System.Threading.Thread(()=> {
+   while(running) {
+    samples.Add(new Sample { milliseconds=clock.Elapsed.TotalMilliseconds,
+      source_visible=TabNative.IsWindowVisible(source),target_visible=TabNative.IsWindowVisible(target) });
+    System.Threading.Thread.Sleep(2);
+   }
+  });
+  thread.IsBackground=true;thread.Start();
+ }
+ public Sample[] Stop(){running=false;thread.Join();timeEndPeriod(1);return samples.ToArray();}
+}
+'@
+$root=Join-Path $TaskDir ('native-acceptance-'+(Get-Date -Format 'HHmmss'))
+New-Item -ItemType Directory -Path $root,"$root/config","$root/home","$root/temp" | Out-Null
+$env:TEMP="$root/temp"
+$env:TMP=$env:TEMP
+$env:ITERATE_CONFIG_DIR="$root/config"
+$env:ITERATE_CROSS_DEVICE_DIR="$root/cross-device"
+$env:ITERATE_CONVERSATION_STATE_FILE="$root/conversation.json"
+$env:WEBVIEW2_USER_DATA_FOLDER="$root/webview"
+$env:ITERATE_LOG_FILE="$root/popup.log"
+$env:CODEX_HOME="$root/home"
+$utf8=[Text.UTF8Encoding]::new($false)
+function WriteJson($path,$value){[IO.File]::WriteAllText($path,($value|ConvertTo-Json -Depth 30),$utf8)}
+WriteJson "$root/config/config.json" @{ui_config=@{always_on_top=$false;window_config=@{focus_popup_on_show=$false;fixed_width=600;fixed_height=900;fixed=$true;popup_placement='left'}};custom_prompt_config=@{enabled=$false;prompts=@()};reply_config=@{copy_submission_to_clipboard=$false}}
+$processes=@()
+$windows=@()
+$report=@{result='Blocked';steps=@();transitions=@();artifact=$Executable;sha256=(Get-FileHash $Executable).Hash;root=$root}
+function Assert($condition,$message){if(-not $condition){throw $message}}
+function WaitFor([scriptblock]$probe,[int]$seconds=45){
+ $end=(Get-Date).AddSeconds($seconds)
+ do {$value=& $probe;if($value){return $value};Start-Sleep -Milliseconds 200}while((Get-Date)-lt $end)
+ throw 'Timed out waiting for observable UI state'
+}
+function Root($hwnd){[Windows.Automation.AutomationElement]::FromHandle([IntPtr]$hwnd)}
+function Elements($hwnd){(Root $hwnd).FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)}
+function Named($hwnd,$name){@(Elements $hwnd | Where-Object {$_.Current.Name -eq $name -and -not $_.Current.IsOffscreen})[0]}
+function Editor($hwnd){
+ $condition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Edit)
+ $edits=(Root $hwnd).FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
+ @($edits|Where-Object {-not $_.Current.IsOffscreen -and $_.Current.IsEnabled}|Sort-Object {$_.Current.BoundingRectangle.Height} -Descending)[0]
+}
+function Value($edit){($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value}
+function Click($element){
+ Assert ($null-ne $element) 'Required visible control not found'
+ $stable=@{rect=$null}
+ WaitFor {
+  $rect=$element.Current.BoundingRectangle.ToString()
+  if($stable.rect-eq $rect){return $true}
+  $stable.rect=$rect
+  return $null
+ } 5 | Out-Null
+ $r=$element.Current.BoundingRectangle
+ $point=[TabNative+Point]::new([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2))
+ $under=[TabNative]::GetAncestor([TabNative]::WindowFromPoint($point),2)
+ $underPid=[uint32]0
+ [void][TabNative]::GetWindowThreadProcessId($under,[ref]$underPid)
+ if($processes.Id-notcontains $underPid -or $under-ne [TabNative]::GetForegroundWindow()){
+  WriteJson "$root/click-blocked.json" @{name=$element.Current.Name;rect=$r.ToString();under=$under.ToInt64();under_pid=$underPid;foreground=[TabNative]::GetForegroundWindow().ToInt64()}
+  throw 'Physical click is blocked by another window; no click issued'
+ }
+ [void][TabNative]::SetCursorPos($point.x,$point.y)
+ [TabNative]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+ [TabNative]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+ Start-Sleep -Milliseconds 150
+}
+function Focus($hwnd,$edit){
+ [void][TabNative]::SetWindowPos([IntPtr]$hwnd,[IntPtr]::Zero,0,0,0,0,0x13)
+ $edge=$edit.Current.BoundingRectangle
+ [void][TabNative]::SetCursorPos([int]($edge.Right-8),[int]($edge.Y+$edge.Height/2))
+ [TabNative]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+ [TabNative]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+ Start-Sleep -Milliseconds 150
+ [void][TabNative]::SetForegroundWindow([IntPtr]$hwnd)
+ try {WaitFor {[TabNative]::GetForegroundWindow().ToInt64()-eq $hwnd} 5 | Out-Null}catch{
+ $r=$edit.Current.BoundingRectangle;$foreground=[TabNative]::GetForegroundWindow();$ownerPid=[uint32]0;[void][TabNative]::GetWindowThreadProcessId($foreground,[ref]$ownerPid)
+ WriteJson "$root/focus-failure.json" @{target=$hwnd;foreground=$foreground.ToInt64();foreground_pid=$ownerPid;edit_rect=$r.ToString();under_cursor=[TabNative]::WindowFromPoint([TabNative+Point]::new([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2))).ToInt64()}
+ Screenshot $hwnd "$root/focus-failure.png"
+ throw 'Test setup could not focus owned popup'
+ }
+}
+function ReadTabGroup{if(Test-Path "$root/temp/iterate_popup_tabs.json"){Get-Content "$root/temp/iterate_popup_tabs.json" -Raw -Encoding UTF8 | ConvertFrom-Json}}
+function TabControl($hwnd,$title){
+ $condition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::TabItem)
+ $tabs=(Root $hwnd).FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
+ @($tabs|Where-Object {$_.Current.Name -match [regex]::Escape($title) -and -not $_.Current.IsOffscreen})[0]
+}
+function VisibleCount{ @($windows | Where-Object {[TabNative]::IsWindowVisible([IntPtr]$_)}).Count }
+function Launch($i){
+ $request="$root/request-$i.json"
+ WriteJson $request @{id="tabs-acceptance-$i";message="Tab mode acceptance message $i";is_markdown=$true;predefined_options=@();project_path=$root;conversation_title="Tab acceptance $i"}
+ $env:ITERATE_RESPONSE_FILE="$root/response-$i.json"
+ $launchExecutable=if($i-eq 1 -and $LegacyTargetExecutable){$LegacyTargetExecutable}else{$Executable}
+ $p=Start-Process $launchExecutable -ArgumentList @('--mcp-request',$request) -PassThru -WindowStyle Hidden -RedirectStandardOutput "$root/stdout-$i.log" -RedirectStandardError "$root/stderr-$i.log"
+ $script:processes+=$p
+ $hwnd=WaitFor {$h=[TabNative]::Window($p.Id);if($h-ne [IntPtr]::Zero){$h.ToInt64()}}
+ $script:windows+=$hwnd
+ WaitFor {(ReadTabGroup).tabs | Where-Object {$_.pid-eq $p.Id}} | Out-Null
+}
+function SettingsMode($hwnd,$mode){
+ Focus $hwnd (WaitFor {Editor $hwnd})
+ Click (WaitFor {Named $hwnd '打开设置'})
+ Start-Sleep -Milliseconds 600
+ if(-not (Named $hwnd '返回聊天') -and (Named $hwnd '打开设置')){
+  Click (Named $hwnd '打开设置')
+ }
+ WaitFor {Named $hwnd '返回聊天'} | Out-Null
+ for($attempt=0;$attempt-lt 15 -and -not (Named $hwnd '窗口设置');$attempt++){
+  $r=(Root $hwnd).Current.BoundingRectangle
+  [void][TabNative]::SetCursorPos([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2))
+  [TabNative]::mouse_event(0x800,0,0,4294966696,[UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 150
+ }
+ Click (WaitFor {Named $hwnd '窗口设置'})
+ Click (WaitFor {Named $hwnd $mode})
+ WaitFor {(ReadTabGroup).mode-eq $(if($mode-eq '标签页'){'tabs'}else{'windows'})} | Out-Null
+ $stable=@{position=$null}
+ $backButton=WaitFor {
+  if(([bool](TabControl $hwnd 'Tab acceptance 0'))-ne ($mode-eq '标签页')){return $null}
+  $button=Named $hwnd '返回聊天'
+  if(-not $button){return $null}
+  $position=$button.Current.BoundingRectangle.ToString()
+  if($stable.position-eq $position){return $button}
+  $stable.position=$position
+  return $null
+ }
+ Click $backButton
+ WaitFor {Editor $hwnd} | Out-Null
+}
+function Screenshot($hwnd,$file){
+ $r=(Root $hwnd).Current.BoundingRectangle
+ $bitmap=[Drawing.Bitmap]::new([int]$r.Width,[int]$r.Height)
+ $graphics=[Drawing.Graphics]::FromImage($bitmap)
+ try{$graphics.CopyFromScreen([int]$r.X,[int]$r.Y,0,0,$bitmap.Size);$bitmap.Save($file,[Drawing.Imaging.ImageFormat]::Png)}finally{$graphics.Dispose();$bitmap.Dispose()}
+}
+
+function SwitchMeasured($from,$to,[switch]$Keyboard){
+ Assert ([TabNative]::GetForegroundWindow().ToInt64()-eq $windows[$from]) 'Switch source is not foreground; do not click another window'
+ $button=WaitFor {TabControl $windows[$from] "Tab acceptance $to"}
+ $monitor=[TabTransitionMonitor]::new($windows[$from],$windows[$to])
+ try {
+  if($Keyboard){[TabNative]::CtrlTab()}else{Click $button}
+  WaitFor {[TabNative]::IsWindowVisible([IntPtr]$windows[$to]) -and (VisibleCount)-eq 1} | Out-Null
+  WaitFor {[TabNative]::GetForegroundWindow().ToInt64()-eq $windows[$to]} 5 | Out-Null
+ } finally {$samples=$monitor.Stop()}
+ $transitionIndex=@($report.transitions).Count
+ WriteJson "$root/transition-$transitionIndex.json" @($samples)
+ $gaps=@($samples|Where-Object {-not $_.source_visible -and -not $_.target_visible})
+ $gapMs=0.0
+ if($gaps.Count){$gapMs=$gaps[-1].milliseconds-$gaps[0].milliseconds+2}
+ $report.transitions+=@{from=$from;to=$to;input=$(if($Keyboard){'Ctrl+Tab'}else{'click'});samples=$samples.Count;exposed_samples=$gaps.Count;exposed_ms=$gapMs;result=$(if($gaps.Count){'Fail'}else{'Pass'})}
+ Assert ($samples.Count-ge 5) 'Transition monitor did not collect enough samples'
+ if(-not $ObserveOnly){Assert ($gaps.Count-eq 0) "Tab switch $from->$to exposed the desktop for $gapMs ms"}
+}
+
+try {
+ Launch 0
+ WaitFor {[TabNative]::IsWindowVisible([IntPtr]$windows[0])} | Out-Null
+ $first=WaitFor {Editor $windows[0]}
+ $workArea=[Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+ $ownedRect=(Root $windows[0]).Current.BoundingRectangle
+ $testX=[Math]::Max($workArea.Left,$workArea.Right-[int]$ownedRect.Width-24)
+ [void][TabNative]::SetWindowPos([IntPtr]$windows[0],[IntPtr]::Zero,$testX,($workArea.Top+46),0,0,0x15)
+ WaitFor {(Root $windows[0]).Current.BoundingRectangle.X -ge $testX} | Out-Null
+ Focus $windows[0] $first
+ $initialRect=(Root $windows[0]).Current.BoundingRectangle
+ [TabNative]::Type('abcdef')
+ WaitFor {(Value $first)-eq 'abcdef'} 5 | Out-Null
+ [Windows.Forms.SendKeys]::SendWait('{LEFT}{LEFT}{LEFT}')
+ Launch 1
+ WaitFor {(VisibleCount)-eq 2} | Out-Null
+ Assert ((VisibleCount)-eq 2) 'Default separate-window mode did not show both popups'
+ Assert ([TabNative]::GetForegroundWindow().ToInt64()-eq $windows[0]) 'Separate-window arrival stole foreground'
+ Assert (@(Elements $windows[0]|Where-Object {$_.Current.Name-eq 'Tab acceptance 0' -and $_.Current.ControlType-eq [Windows.Automation.ControlType]::Text -and -not $_.Current.IsOffscreen}).Count-ge 1) 'Separate-window title missing'
+ $report.steps+=@{step='default-separate-windows-with-title';result='Pass'}
+ SettingsMode $windows[0] '标签页'
+ WaitFor {(VisibleCount)-eq 1} | Out-Null
+ Assert ((ReadTabGroup).active_pid-eq $processes[0].Id) 'Enabling tabs did not keep the window used to change setting'
+ Assert ((Value (Editor $windows[0]))-eq 'abcdef') 'Mode setting lost original draft'
+ $rect=(Root $windows[0]).Current.BoundingRectangle
+ Assert ($rect.Width-eq $initialRect.Width -and $rect.Height-eq $initialRect.Height) 'Enabling tabs changed existing popup size'
+ $saved=Get-Content "$root/config/config.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+ Assert ($saved.ui_config.window_config.popup_display_mode-eq 'tabs') 'Display choice did not persist'
+ $report.steps+=@{step='enable-tabs-through-settings-and-persist';result='Pass';width=$rect.Width;height=$rect.Height}
+ $tabRect=(WaitFor {TabControl $windows[0] 'Tab acceptance 0'}).Current.BoundingRectangle
+ Assert ($tabRect.Height-ge 40) 'Title tab height is below40px'
+ $duplicateTitle=@(Elements $windows[0] | Where-Object {$_.Current.Name-eq 'Tab acceptance 0' -and $_.Current.ControlType-eq [Windows.Automation.ControlType]::Text -and -not $_.Current.IsOffscreen})
+ Assert ($duplicateTitle.Count-eq 0) 'Tab mode still shows the separate conversation title'
+ $report.steps+=@{step='taller-tab-is-the-only-conversation-title';result='Pass';tab_height=$tabRect.Height;duplicate_title_text_nodes=$duplicateTitle.Count}
+ $nextTabRect=(WaitFor {TabControl $windows[0] 'Tab acceptance 1'}).Current.BoundingRectangle
+ Assert ($tabRect.Right -lt $nextTabRect.Left) 'Adjacent tabs have no visible separation'
+ $report.steps+=@{step='tabs-visibly-separated';result='Pass';gap=($nextTabRect.Left-$tabRect.Right)}
+ Focus $windows[0] (Editor $windows[0])
+ [Windows.Forms.SendKeys]::SendWait('{END}{LEFT}{LEFT}{LEFT}')
+ Launch 2
+ WaitFor {(ReadTabGroup).tabs.Count-eq 3} | Out-Null
+ Start-Sleep -Milliseconds 800
+ Assert ((VisibleCount)-eq 1) 'Background arrival showed an extra window'
+ Assert ([TabNative]::GetForegroundWindow().ToInt64()-eq $windows[0]) 'Background tab stole foreground'
+ [TabNative]::Type('X')
+ WaitFor {(Value (Editor $windows[0]))-eq 'abcXdef'} 5 | Out-Null
+ WriteJson "$root/controls.json" @(Elements $windows[0]|ForEach-Object {@{name=$_.Current.Name;type=$_.Current.ControlType.ProgrammaticName;offscreen=$_.Current.IsOffscreen}})
+ $report.steps+=@{step='background-tab-keeps-window-focus-caret';result='Pass';draft='abcXdef'}
+ SwitchMeasured 0 1
+ if($LegacyTargetExecutable){
+  $report.steps+=@{step='new-source-to-legacy-target-without-desktop-exposure';result='Pass';legacy_sha256=(Get-FileHash $LegacyTargetExecutable).Hash}
+  $report.result='Pass'
+  return
+ }
+ WaitFor {[TabNative]::IsWindowVisible([IntPtr]$windows[1]) -and (VisibleCount)-eq 1} | Out-Null
+ WaitFor {[TabNative]::GetForegroundWindow().ToInt64()-eq $windows[1]} 5 | Out-Null
+ $second=WaitFor {Editor $windows[1]}
+ Focus $windows[1] $second
+ [TabNative]::Type('second-draft')
+ WaitFor {(Value $second)-eq 'second-draft'} 5 | Out-Null
+ SwitchMeasured 1 0
+ WaitFor {[TabNative]::IsWindowVisible([IntPtr]$windows[0]) -and (VisibleCount)-eq 1} | Out-Null
+ Assert ((Value (Editor $windows[0]))-eq 'abcXdef') 'Returning to first tab lost draft'
+ Start-Sleep -Milliseconds 500
+ Screenshot $windows[0] "$root/tabs.png"
+ SwitchMeasured 0 1
+ WaitFor {[TabNative]::IsWindowVisible([IntPtr]$windows[1])} | Out-Null
+ Assert ((Value (Editor $windows[1]))-eq 'second-draft') 'Returning to second tab lost draft'
+ $report.steps+=@{step='tab-switch-independent-drafts';result='Pass'}
+ Focus $windows[1] (Editor $windows[1])
+ [TabNative]::PlainTab()
+ Start-Sleep -Milliseconds 500
+ Assert ([TabNative]::IsWindowVisible([IntPtr]$windows[1]) -and -not [TabNative]::IsIconic([IntPtr]$windows[1])) 'Plain Tab minimized or hid popup'
+ Assert ([TabNative]::GetForegroundWindow().ToInt64()-eq $windows[1] -and (ReadTabGroup).active_pid-eq $processes[1].Id) 'Plain Tab changed active popup'
+ Assert ((Value (Editor $windows[1]))-eq 'second-draft') 'Plain Tab changed draft'
+ $report.steps+=@{step='plain-tab-no-longer-minimizes-popup';result='Pass'}
+ SwitchMeasured 1 2 -Keyboard
+ SwitchMeasured 2 0 -Keyboard
+ SwitchMeasured 0 1 -Keyboard
+ Assert ((Value (Editor $windows[1]))-eq 'second-draft') 'Ctrl+Tab cycle lost draft'
+ $report.steps+=@{step='ctrl-tab-cycles-next-wrap-first';result='Pass';sequence=@(1,2,0,1)}
+
+ for($cycle=0;$cycle-lt 12;$cycle++){
+  Start-Sleep -Milliseconds ((($cycle*47)%230)+10)
+  SwitchMeasured 1 0
+  SwitchMeasured 0 1
+ }
+ Assert ((Value (Editor $windows[1]))-eq 'second-draft') 'Repeated switching lost second draft'
+ $report.steps+=@{step='repeated-switch-no-desktop-exposure';result=$(if(@($report.transitions|Where-Object result -eq 'Fail').Count){'Fail'}else{'Pass'});transitions=$report.transitions.Count;sampling_ms=2}
+
+ Click (WaitFor {Named $windows[1] '发送'})
+ WaitFor {Test-Path "$root/response-1.json"} | Out-Null
+ $response=Get-Content "$root/response-1.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+ Assert ($response.user_input-eq 'second-draft') 'Reply did not match selected draft'
+ Assert ($response.metadata.actual_request_id-eq 'tabs-acceptance-1') 'Reply went to wrong request'
+ WaitFor {(ReadTabGroup).tabs.Count-eq 2 -and [TabNative]::IsWindowVisible([IntPtr]$windows[2])} | Out-Null
+ Assert ((ReadTabGroup).active_pid-eq $processes[2].Id) 'Sending middle tab did not advance to its right-hand neighbor'
+ WaitFor {[TabNative]::GetForegroundWindow().ToInt64()-eq $windows[2]} 5 | Out-Null
+ $report.steps+=@{step='send-middle-advances-to-right-tab';result='Pass';actual_request_id=$response.metadata.actual_request_id}
+ $last=WaitFor {Editor $windows[2]}
+ Focus $windows[2] $last
+ [TabNative]::Type('last-tab-draft')
+ WaitFor {(Value $last)-eq 'last-tab-draft'} 5 | Out-Null
+ Click (WaitFor {Named $windows[2] '发送'})
+ WaitFor {Test-Path "$root/response-2.json"} | Out-Null
+ $lastResponse=Get-Content "$root/response-2.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+ Assert ($lastResponse.user_input-eq 'last-tab-draft' -and $lastResponse.metadata.actual_request_id-eq 'tabs-acceptance-2') 'Last-tab reply went to wrong request'
+ WaitFor {(ReadTabGroup).tabs.Count-eq 1 -and [TabNative]::IsWindowVisible([IntPtr]$windows[0])} | Out-Null
+ Assert ((ReadTabGroup).active_pid-eq $processes[0].Id) 'Sending final tab did not wrap to first remaining tab'
+ WaitFor {[TabNative]::GetForegroundWindow().ToInt64()-eq $windows[0]} 5 | Out-Null
+ Assert ((Value (Editor $windows[0]))-eq 'abcXdef') 'Sending other tab changed original draft'
+ $report.steps+=@{step='send-last-wraps-to-first-and-preserves-draft';result='Pass';actual_request_id=$lastResponse.metadata.actual_request_id}
+ [TabNative]::CtrlTab()
+ Start-Sleep -Milliseconds 500
+ Assert ((ReadTabGroup).active_pid-eq $processes[0].Id -and [TabNative]::GetForegroundWindow().ToInt64()-eq $windows[0]) 'Ctrl+Tab on one remaining tab changed popup'
+ $report.steps+=@{step='ctrl-tab-one-tab-keeps-current';result='Pass'}
+ Launch 3
+ WaitFor {(ReadTabGroup).tabs.Count-eq 2} | Out-Null
+ SettingsMode $windows[0] '分窗'
+ WaitFor {(VisibleCount)-eq 2} | Out-Null
+ Assert ((Value (Editor $windows[0]))-eq 'abcXdef') 'Returning to separate windows lost draft'
+ Assert (@(Elements $windows[0]|Where-Object {$_.Current.Name-eq 'Tab acceptance 0' -and $_.Current.ControlType-eq [Windows.Automation.ControlType]::Text -and -not $_.Current.IsOffscreen}).Count-ge 1) 'Returning to separate windows did not restore title'
+ $report.steps+=@{step='return-to-separate-windows-restores-title';result='Pass'}
+ SettingsMode $windows[0] '标签页'
+ Launch 4
+ WaitFor {(ReadTabGroup).tabs.Count-eq 3} | Out-Null
+ Assert ((ReadTabGroup).mode-eq 'tabs' -and (ReadTabGroup).active_pid-eq $processes[0].Id) 'New process did not load saved tab mode'
+ Assert (-not [TabNative]::IsWindowVisible([IntPtr]$windows[4])) 'Saved mode failed for newly launched popup'
+ Assert (@(Elements $windows[0]|Where-Object {$_.Current.Name-eq 'Tab acceptance 0' -and $_.Current.ControlType-eq [Windows.Automation.ControlType]::Text -and -not $_.Current.IsOffscreen}).Count-eq 0) 'Reloaded tabs mode duplicated the title'
+ $report.steps+=@{step='saved-tabs-mode-keeps-title-in-tab-only';result='Pass'}
+ $report.result='Pass'
+}catch{
+ $report.result='Fail';$report.error=$_.Exception.ToString();$report.location=$_.ScriptStackTrace
+ $foreground=[TabNative]::GetForegroundWindow()
+ $foregroundPid=[uint32]0
+ [void][TabNative]::GetWindowThreadProcessId($foreground,[ref]$foregroundPid)
+ $report.foreground=@{hwnd=$foreground.ToInt64();pid=$foregroundPid;owned_pids=@($processes.Id);owned_windows=@($windows)}
+ foreach($h in $windows){if([TabNative]::IsWindowVisible([IntPtr]$h)){try{Screenshot $h "$root/failure-screen-$h.png"}catch{}}}
+ if(Test-Path "$root/temp/iterate_popup_tabs.json"){$report.group=ReadTabGroup}
+ foreach($h in $windows){try{WriteJson "$root/failure-controls-$h.json" @(Elements $h | ForEach-Object {@{name=$_.Current.Name;type=$_.Current.ControlType.ProgrammaticName;offscreen=$_.Current.IsOffscreen}})}catch{}}
+}finally{
+ WriteJson "$root/result.json" $report
+ if(-not $LeaveOpen -or $report.result-ne 'Pass'){foreach($p in $processes){if(-not $p.HasExited){Stop-Process -Id $p.Id -ErrorAction SilentlyContinue}}}
+ $report|ConvertTo-Json -Depth 15
+}
+if($report.result-ne 'Pass'){exit 1}

@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-06",
+  "status": "mobile_submission_user_confirmed_desktop_watchdog_review_pending",
+  "runtime": {
+    "phone_updated": true,
+    "phone_last_confirmed_apk_sha_prefix": "071ce66d",
+    "phone_feedback": "新版已装，旧 tab 不再回来",
+    "phone_acceptance_time": "2026-10-06T18:34:15+08:00",
+    "desktop_bridge_updated": false,
+    "usb_device_available": false,
+    "latest_phone_roundtrips": ["17:18:13", "17:19:04", "17:19:26"],
+    "response_source": "android_cross_device",
+    "matching_popup_processes_exited": [26832, 7688, 24728]
+  },
+  "android": {
+    "files": [
+      "E:/Github/iterate-android/app/src/main/java/com/kexin94yyds/iterate/mobile/BridgeClient.kt",
+      "E:/Github/iterate-android/app/build.gradle.kts",
+      "E:/Github/iterate-android/app/src/test/java/com/kexin94yyds/iterate/mobile/BridgeClientConnectionTest.kt",
+      "E:/Github/iterate-android/app/src/main/java/com/kexin94yyds/iterate/mobile/WorkbenchModels.kt",
+      "E:/Github/iterate-android/app/src/test/java/com/kexin94yyds/iterate/mobile/ImmediateTabCloseTest.kt"
+    ],
+    "connection_tests": {"passed": 5, "failed": 0},
+    "earlier_full_suite": {"passed": 47, "failed": 1},
+    "latest_full_suite": {"passed": 50, "failed": 1},
+    "immediate_close_tests": {"passed": 2, "failed": 0},
+    "existing_failure": "WorkbenchStateTest.closeBeforeUnknownAckRestoresConversationAndOriginalDraft",
+    "existing_failure_reproduced_with_before_client": true,
+    "apk": "G:/DevLocal/BuildTemp/iterate-android/connection-recovery-20261006/build/app/outputs/apk/debug/app-debug.apk",
+    "apk_sha256": "071CE66DE4C80FE145C79EBB394BBAD7860B675C3192A8ED222CEDD89E7198D7",
+    "candidate_download_url": "https://liguoqun.com/downloads/iterate-android-20261006-071ce66d/iterate-candidate.apk",
+    "download_http_status": 200,
+    "download_bytes": 20905649,
+    "download_tls_and_sha256_verified": true,
+    "apk_v2_signature_verified": true,
+    "jev_final_action": "escalate",
+    "jev_safe_to_apply": 0.53,
+    "jev_unresolved_dimensions": ["test_gap confidence 0.29", "blast_radius confidence 0.31"],
+    "jev_supplement_rounds": 2,
+    "immediate_close_jev_action": "escalate",
+    "immediate_close_jev_safe_to_apply": 0.26,
+    "pending_receipt_root_cause": "Hub queued receipt status=pending completed sendAction as failure, restoring pending request snapshot before final delivery",
+    "pending_receipt_fix": "After matching receipt identity, wait through pending until final result or existing bounded timeout",
+    "pending_receipt_repro": "2 failures before guard; 6 final success/rejection tests across MCP, Native and Mirror pass after guard",
+    "pending_receipt_jev_action": "escalate",
+    "candidate_distribution_route": "deliver_candidate_limits",
+    "deployment_status": "candidate_download_installed_by_user_tab_regression_user_confirmed_review_remains_unresolved"
+  },
+  "desktop_watchdog": {
+    "candidate": "G:/DevLocal/BuildTemp/iterate-desktop/source-watchdog-20261006/candidate/iterate.exe",
+    "candidate_sha256": "3E132F803CDEA87F73BA7DFE8F5894844EF8F6338109AD5B1D04D005D6FF71CE",
+    "jev_final_action": "escalate",
+    "deployment_status": "not_deployed"
+  },
+  "remaining": [
+    "Determine what restored the current phone connection and correlate with missing-card incident",
+    "Resolve candidate review limitations without repeating unchanged JEV calls",
+    "Resolve existing state-model test contract separately while preserving prior changes",
+    "Install an approved candidate and verify actual phone receiving, replies, reconnect, and desktop popup closure"
+  ]
+}

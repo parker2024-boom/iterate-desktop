@@ -853,7 +853,11 @@ export function useMcpHandler() {
         // 最小化窗口到 Dock
         try {
           const window = getCurrentWindow()
-          await window.minimize()
+          // A hidden Windows tab must stay unminimized: restoring it on its
+          // first selection can expose WebView's initial blank frame.
+          const isWindowsBackgroundTab = tabIsBackground && navigator.platform.toUpperCase().includes('WIN')
+          if (!isWindowsBackgroundTab)
+            await window.minimize()
           // Windows needs show() for a taskbar entry; macOS show() restores
           // the miniaturized window, so leave its Dock presentation alone.
           if (isMcpProcess.value && !tabIsBackground && !navigator.platform.toUpperCase().includes('MAC'))

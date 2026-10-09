@@ -122,8 +122,13 @@ fn hide_mcp_window_on_main_thread(window: &tauri::WebviewWindow) -> Result<(), S
     }
 
     #[cfg(target_os = "macos")]
-    if let Err(error) = restore_standalone_previous_frontmost_application() {
-        log::warn!("failed to restore application after MCP dismissal: {error}");
+    {
+        crate::ui::popup_tabs::confirm_send_window_hidden(window)?;
+        if !crate::ui::popup_tabs::send_handoff_in_progress() {
+            if let Err(error) = restore_standalone_previous_frontmost_application() {
+                log::warn!("failed to restore application after MCP dismissal: {error}");
+            }
+        }
     }
 
     Ok(())

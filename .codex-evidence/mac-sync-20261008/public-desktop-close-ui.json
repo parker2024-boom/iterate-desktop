@@ -1,0 +1,15 @@
+{
+  "scope": "Real installed Windows mirror close control over production HTTPS Hub",
+  "mirror_pid": 25064,
+  "unrelated_mirror_preserved": true,
+  "matching_mirror_closed": true,
+  "second_mirror_pid": 24620,
+  "close_control_invoked": true,
+  "second_background_hidden": true,
+  "tab_visible": true,
+  "result": "Pass",
+  "second_key": "89884971-ee54-407e-be6e-20a1840adeb8",
+  "next_tab_visible": true,
+  "switched_to_exact_owned_tab": true,
+  "source_key": "a066ecae-3277-45ce-9a0c-55cdd29a7842"
+}

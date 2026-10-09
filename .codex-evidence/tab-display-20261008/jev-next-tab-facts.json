@@ -1,0 +1,12 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"tool\": \"jev_verify\",\n  \"model\": \"jev-latest\",\n  \"provider\": \"typesafe\",\n  \"auto_accept\": 0.8,\n  \"summary\": {\n    \"verified\": 2,\n    \"contradicted\": 0,\n    \"unsupported\": 0,\n    \"needs_review\": 0\n  },\n  \"results\": [\n    {\n      \"id\": \"claim0\",\n      \"claim\": \"Windows GUI 安装文件哈希与已验收候选6923一致。\",\n      \"verdict\": \"verified\",\n      \"probabilities\": {\n        \"supports\": 0.98,\n        \"says_nothing\": 0.01,\n        \"contradicts\": 0.01\n      },\n      \"confidence\": 0.97,\n      \"action\": \"auto\",\n      \"supporting_evidence\": \"actual-ui-result\"\n    },\n    {\n      \"id\": \"claim1\",\n      \"claim\": \"同一候选的10项实际UI验收全部通过。\",\n      \"verdict\": \"verified\",\n      \"probabilities\": {\n        \"supports\": 1,\n        \"says_nothing\": 0,\n        \"contradicts\": 0\n      },\n      \"confidence\": 1,\n      \"action\": \"auto\",\n      \"supporting_evidence\": \"actual-ui-result\"\n    }\n  ],\n  \"usage\": {\n    \"input_tokens\": 1851,\n    \"output_tokens\": 177\n  }\n}"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 3
+}

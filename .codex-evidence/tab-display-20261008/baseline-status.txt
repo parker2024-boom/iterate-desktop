@@ -1,0 +1,38 @@
+﻿ M scripts/desktop-speech-frontend-ownership.test.mjs
+ M src/bin/mcp-server.rs
+ M src/frontend/components/AppContent.vue
+ M src/frontend/components/common/CrossDeviceSettings.vue
+ M src/frontend/components/conversation/TimelineDotBar.vue
+ M src/frontend/components/conversation/TimelineView.vue
+ M src/frontend/components/popup/McpPopup.vue
+ M src/frontend/components/popup/PopupActions.vue
+ M src/frontend/components/popup/PopupContent.vue
+ M src/frontend/components/popup/PopupHeader.vue
+ M src/frontend/components/settings/mobileConnectionMachine.test.ts
+ M src/frontend/components/settings/mobileConnectionMachine.ts
+ M src/frontend/components/settings/useMobileConnectionSetup.ts
+ M src/frontend/composables/useCrossDevice.ts
+ M src/frontend/composables/useGlobalSpeechRuntimeHost.ts
+ M src/frontend/composables/useMcpDelivery.ts
+ M src/frontend/composables/useMcpHandler.immediateDismiss.test.ts
+ M src/frontend/composables/useMcpHandler.ts
+ M src/frontend/services/bridgeRequestClosure.ts
+ M src/frontend/types/popup.d.ts
+ M src/rust/app/builder.rs
+ M src/rust/app/setup.rs
+ M src/rust/conversation/commands.rs
+ M src/rust/conversation/types.rs
+ M src/rust/cross_device.rs
+ M src/rust/cross_device/hub_transport.rs
+ M src/rust/mcp/mod.rs
+ M src/rust/tunnel/commands.rs
+ M src/rust/ui/commands.rs
+ M src/rust/ui/mod.rs
+ M src/rust/ui/window_registry.rs
+?? .codex-evidence/
+?? AGENTS.md
+?? services/
+?? src/frontend/composables/desktopMcpSubmission.ts
+?? src/frontend/composables/useMcpHandler.desktopSubmission.test.ts
+?? src/rust/mcp/conversation_title.rs
+?? src/rust/ui/popup_presentation.rs

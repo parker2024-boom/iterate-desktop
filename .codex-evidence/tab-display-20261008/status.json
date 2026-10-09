@@ -1,0 +1,784 @@
+{
+    "status":  "tab_title_installed_actual_ui_accepted_jev_skipped_by_user",
+    "scope":  "Keep existing separate-window display and add selectable tab display; do not replace existing mode or change the production default.",
+    "production_changed":  true,
+    "prototype_pid":  null,
+    "latest_user_feedback":  "tab就是标题了，让tab高一点；下方不用重复显示标题。",
+    "corrected_ui_scope":  "Preserve the existing popup size, style, content layout and buttons. Add only a compact tab strip and a separate-window/tab display setting. Discard the redesigned prototype.",
+    "authorization":  "User replied 请按照最佳实践继续 after the exact minimal scope was restated, and then twice 继续. Existing product UI reused; no replacement Qt UI.",
+    "jev_route":  "native_window_tabs confidence 1; keep original processes/forms/reply routes and group only native presentation",
+    "current_tests":  "Installed2D18:14 actual UI steps and30 Tab transitions Pass;40px Tab,duplicate title0,separate title restored;lint both edited Vue files Pass,Vite/release Pass,70 embedded assets verified. Prior unchanged native/send tests retained. JEV explicitly skipped by user.",
+    "prototype_entry":  "prototype/run_demo.py",
+    "test_result":  "Pass",
+    "test_evidence":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\ui-final\\native-acceptance-113407\\result.json",
+    "preview":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\ui-final\\native-acceptance-113407\\tabs.png",
+    "limits":  [
+                   "JEV code gates remain escalate after two supplemental rounds, without a concrete defect; retain this unresolved review status.",
+                   "Actual phone App list confirmation is pending; cloud/source ID equality and removal of the initial 20 invalid entries were measured and verified.",
+                   "Tab mode is available for newly opened Windows popups; existing editing windows were preserved.",
+                   "Mac tab mode has not been built or accepted. Rejected Qt redesign is not included."
+               ],
+    "process_outputs":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-display-20261008",
+    "python_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/python-cache",
+    "production":  {
+                       "gui_tabs_installed":  true,
+                       "bridge_pid":  22084,
+                       "existing_editing_windows_preserved":  true,
+                       "gui_sha256":  "2D18F622BE61DF6394CCAD118C752FBD128B7885EB97B74AB97BA7ED7FBD4B86",
+                       "bridge_sha256":  "09D64356985B2956CBB32DD1C435057BF5DED3711CDF526B07840310EBF00F1F"
+                   },
+    "cloud_cleanup":  {
+                          "original_invalid_active":  20,
+                          "original_invalid_remaining":  0,
+                          "current_valid_mcp":  1,
+                          "archive_manifest":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-display-20261008/pending-cleanup/archive/manifest.json",
+                          "routes":  [
+                                         "archive_orphan_isolate_closures confidence .99",
+                                         "retire_previous_native_owner confidence 1",
+                                         "persist_confirmed_close_ack confidence 1"
+                                     ],
+                          "confirmed_close_ack_count":  322
+                      },
+    "jev_tabs_gate":  {
+                          "action":  "escalate",
+                          "safe_to_apply":  0.38,
+                          "ui_claim_verdict":  "verified",
+                          "ui_claim_confidence":  0.71,
+                          "supplemental_rounds":  2,
+                          "concrete_defect_reported":  false
+                      },
+    "final_cloud_source":  {
+                               "original_invalid_remaining":  0,
+                               "current_cloud_mcp_ids":  [
+                                                             "serve-1791461173664-8a724ed8-3578-4867-83f4-03edc73fbd7f"
+                                                         ],
+                               "current_cloud_active_count":  1,
+                               "original_invalid_count":  20,
+                               "checked_at":  "2026-10-08T20:06:36.3241458+08:00",
+                               "cloud_source_mcp_equal":  true,
+                               "source_live_mcp_ids":  [
+                                                           "serve-1791461173664-8a724ed8-3578-4867-83f4-03edc73fbd7f"
+                                                       ]
+                           },
+    "jev_cleanup_gate":  {
+                             "action":  "escalate",
+                             "safe_to_apply":  0.43,
+                             "supplemental_rounds":  2,
+                             "concrete_defect_reported":  false
+                         },
+    "final_facts":  {
+                        "verdict":  "verified",
+                        "confidence":  1,
+                        "action":  "auto",
+                        "input_encoding_correction":  "PowerShell Tee-Object UTF16 evidence converted to UTF8 before final verification"
+                    },
+    "build_outputs":  {
+                          "frontend":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/frontend-dist",
+                          "cargo_build_cache_and_binaries":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+                          "final_artifact_test_temp_evidence":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-title-20261009",
+                          "python_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/python-cache"
+                      },
+    "phone_app_confirmation":  "Real Android reply received, matched original request, and automatically closed in cloud. User asks whether same root cause is prevented; explicit visual list confirmation not yet supplied.",
+    "real_phone_e2e":  {
+                           "request_id":  "serve-1791461445772-87b02b26-2b9b-4f8b-9636-40f9738cd567",
+                           "client_action_id":  "5a11643e-0e43-4454-ba5b-a20bce911984",
+                           "source":  "android_cross_device",
+                           "reply_text_matches":  true,
+                           "cloud_active_after_reply":  false,
+                           "cloud_pending_after_reply":  0
+                       },
+    "tab_position":  {
+                         "status":  "installed_ui_accepted_code_review_retained",
+                         "change":  "Move only PopupTabs before PopupHeader in existing sticky header",
+                         "ui_steps_passed":  8,
+                         "tab_bottom":  99,
+                         "title_top":  156,
+                         "gate_action":  "review",
+                         "safe_to_apply":  0.59,
+                         "gate_supplemental_rounds":  1,
+                         "install_route":  "install_tested_gui_keep_review",
+                         "route_confidence":  0.97,
+                         "installation_manifest":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-display-20261008/tab-above-title-install.json",
+                         "packaging_failure":  "Absolute G:/ frontendDist interpreted as URL; failed candidate not installed",
+                         "packaging_repair":  "Use ../frontend-dist, rebuild, check 70 embedded assets and rerun real UI",
+                         "jev_api_issue":  "First install-route call returned 503; actual API verified recovered and successful route selected before installation"
+                     },
+    "next_tab_controls":  {
+                              "status":  "installed_functional_acceptance_passed_code_review_unresolved",
+                              "route":  "confirmed_send_foreground_handoff",
+                              "route_confidence":  1,
+                              "native_unit_tests_passed":  7,
+                              "submission_tests_passed":  15,
+                              "frontend_build_passed":  true,
+                              "targeted_lint_passed":  true,
+                              "ui_acceptance":  "10 Pass, same6923 hash as installed; middle/last ForegroundWindow checks passed before manual focus",
+                              "scope":  "Ordered successor and individual tab boundaries; confirmed ACK completion with own PID/request guard and foreground handoff. Shared desktop accepted contract restored unchanged. Production frozen legacy and current repo desktop paths adapted individually.",
+                              "jev_runtime_transport":  "closed",
+                              "jev_recovery":  "Original configured stdio server reused; initialize/tools-list, TypeSafe verify and failure gate diagnostics passed; real route decided",
+                              "ui_failure_evidence":  [
+                                                          "native-acceptance-211550 middle selection passed but foreground blocked by real popup",
+                                                          "native-acceptance-211820 right-side fixture still covered by terminal; native noactivate transition exposed actual foreground handoff gap"
+                                                      ],
+                              "installed_hash":  "6923E9EA0BFB14FC7DDB7F676AA0568ED77158F1A20431022C7E45088B3471C1",
+                              "installation_manifest":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-display-20261008/next-tab-install.json",
+                              "code_gate":  {
+                                                "action":  "escalate",
+                                                "safe_to_apply":  0.28,
+                                                "supplemental_rounds":  2,
+                                                "concrete_defect_reported":  false,
+                                                "ui_claims":  "verified1 and .97 auto",
+                                                "limited_install_route":  "install_tested_candidate_retain_review",
+                                                "route_confidence":  0.94
+                                            },
+                              "final_facts":  {
+                                                  "installed_hash":  "verified confidence.97 auto",
+                                                  "ui_ten_steps":  "verified confidence1 auto",
+                                                  "evidence":  "jev-next-tab-facts.json",
+                                                  "payload_fix":  "Fact serialization helper stalled before API call; stopped only verified owned helper; File.ReadAllText plain strings and depth10 completed successfully"
+                                              },
+                              "acceptance_script":  "E:/Github/iterate-desktop/.codex-evidence/tab-display-20261008/acceptance-next-tab.ps1"
+                          },
+    "tab_flicker":  {
+                        "status":  "installed_core_acceptance_passed_full_release_suite_incomplete_jev_unavailable",
+                        "request":  "tab之间的切换不应该闪",
+                        "route":  "native_make_before_break",
+                        "route_confidence":  1,
+                        "baseline":  "14 actual switches recorded; 7 with source+target both hidden; baseline later lost foreground during repeated switching",
+                        "native_tests_passed":  8,
+                        "source_sha256":  "0D1F0C675EEEFF1E7EE866CB9B3E67A74726180FED95EF2FFE691C4F4C4DF2B6",
+                        "build_task":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009",
+                        "limits":  [
+                                       "Old source popups retain old worker until closed; editing windows are preserved.",
+                                       "Windows native handoff only; Mac not built or tested.",
+                                       "Full final release UI suite interrupted by foreign window at last reload; retain Fail instead of claiming all checks pass.",
+                                       "JEV final code gate is unverified due actual451 API region error; no auto pass claimed."
+                                   ],
+                        "scope":  "Only popup_tabs.rs native presentation; destination native-visible before source hide, no redundant hide/geometry updates, grant foreground before publication",
+                        "mouse_release_acceptance":  {
+                                                         "sha256":  "ABB11B78A90CA0EE0D034CCA2F8E96F79F1821BC18374C0F135CD7C0BC33C2BB",
+                                                         "ui_steps_passed":  11,
+                                                         "click_switches_passed":  27,
+                                                         "gap_samples":  0,
+                                                         "result":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/new-ui/native-acceptance-085305/result.json"
+                                                     },
+                        "keyboard":  {
+                                         "request":  "Ctrl+Tab循环切换；屏蔽单独Tab快捷键",
+                                         "route":  "popup_tabs_key_capture",
+                                         "confidence":  1,
+                                         "lint":  "Pass",
+                                         "frontend_build":  "Pass",
+                                         "legacy_binding":  "Remove only plain Tab minimizing; keep Shift+Tab and other minimize controls",
+                                         "verification":  "Final51EAE actual CtrlTab1-\u003e2-\u003e0-\u003e1 Pass; plainTab no minimize Pass; one-tab CtrlTab unchanged Pass; 30 combined switches no native gaps."
+                                     },
+                        "installed_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+                        "acceptance":  {
+                                           "final_release_core_steps_passed":  13,
+                                           "switches_passed":  30,
+                                           "native_visible_samples":  6416,
+                                           "gap_samples":  0,
+                                           "show_before_hide":  true,
+                                           "median_sample_interval_ms":  2.9896,
+                                           "max_sample_interval_ms":  6.1717,
+                                           "core_report":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/final-ui-quiet/native-acceptance-091522/result.json",
+                                           "full_suite_result":  "Fail: last reload interrupted by foreign popup PID15756; final samehash complete rerun not achieved",
+                                           "debug_preflight":  "14/14 steps and30 switches Pass",
+                                           "legacy_target_compatibility":  "Native visibility protocol compatible by inspection; dedicated mixed-version test was not run"
+                                       },
+                        "jev_gate":  {
+                                         "status":  "unavailable",
+                                         "error_code":  451,
+                                         "error":  "Typesafe is not available in your region.",
+                                         "runtime_and_fresh_stdio_same_error":  true,
+                                         "pre_ui_review":  "escalate safe_to_apply.18 before UI evidence",
+                                         "reload_route":  "Initial confidence.97 warning requirement contradicted; clarification request failed451; not implemented",
+                                         "quiet_route":  "confidence.69 below threshold; routine same previously-selected acceptance script only, no code/installation undertaken from that recommendation"
+                                     }
+                    },
+    "send_handoff":  {
+                         "status":  "installed_accepted_jev_skipped_by_user",
+                         "user_requirement":  "Direct handoff to an existing next tab without waiting for a new popup.",
+                         "new_product_changes":  true,
+                         "installed_sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                         "code_evidence":  [
+                                               "Current and frozen frontend: dismiss before send ACK; complete_popup_tab after ACK.",
+                                               "popup_tabs.rs:237-276: focus requested only if original foreground and exact GetLastInputInfo time unchanged; AllowSetForegroundWindow must succeed after source hidden.",
+                                               "popup_tabs.rs:296-344: destination presentation depends on independent 300ms native worker."
+                                           ],
+                         "diagnostics":  "Existing targeted unit test background_send_or_new_user_input_never_requests_foreground: 1 passed,0 failed; confirms strict input timestamp policy, not this new requirement satisfied.",
+                         "acceptance_gap":  "Previous send checks wait up to5 seconds for destination foreground; no continuous send visibility/latency or intervening input check. Do not infer immediate handoff passed.",
+                         "actual_runtime_failure":  "User reported focus missing; controlled trace reproduced159.1381ms source/target hidden gap, but that one send eventually obtained target foreground. Specific focus failure trigger remains unmeasured.",
+                         "jev_stage":  "User explicitly instructed 跳过jev。 through real Iterate continued conversation; JEV is skipped for this send repair. Prior451 results retained as history.",
+                         "route_request":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/send-handoff-route-request-v2.json",
+                         "route_result":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/send-handoff-route-unavailable-v2.json",
+                         "build":  "Release9m39s built,70 embedded assets checked,installed exact tested hash;all process outputs/cache/temp on G.",
+                         "required_acceptance":  [
+                                                     "Existing target process/window takes over immediately without repopup.",
+                                                     "ACK ownership and failure draft recovery.",
+                                                     "Mouse movement during send does not accidentally suppress focus; intentional external foreground is respected."
+                                                 ],
+                         "actual_trace":  {
+                                              "diagnostic_collection":  "Pass",
+                                              "product_immediate_handoff":  "Not satisfied in this trace",
+                                              "samples":  495,
+                                              "both_hidden_samples":  54,
+                                              "hidden_to_shown_ms":  159.1381,
+                                              "target_became_foreground":  true,
+                                              "target_process_preserved":  true,
+                                              "request_id":  "tabs-acceptance-0",
+                                              "report":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/send-probe/native-acceptance-095404/result.json",
+                                              "raw_samples":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-flicker-20261009/send-probe/native-acceptance-095404/send-transition.json",
+                                              "facts_verification":  "Unverified: actual JEV451",
+                                              "owned_processes_cleaned":  true,
+                                              "new_build":  false
+                                          },
+                         "authorized_jev_override":  "跳过jev。",
+                         "implementation":  "Select and show existing native successor before source dismissal; retain source request until ACK; guarded failure restoration respects edited/selected peer.",
+                         "preflight":  {
+                                           "all_gui_scenarios":  "Pass",
+                                           "native_both_hidden_samples":  0,
+                                           "submission_tests":  16,
+                                           "frontend_build":  "Pass",
+                                           "lint":  "Pass",
+                                           "native_tests":  11,
+                                           "actual_gui_scenarios":  [
+                                                                        "pending ACK target editing and mouse movement",
+                                                                        "failed send returns source draft",
+                                                                        "failed send after peer edit respects target",
+                                                                        "new sender with installed51EAE peer"
+                                                                    ],
+                                           "evidence_root":  "G:/DevLocal/BuildTemp/iterate-desktop/send-handoff-20261009",
+                                           "installed":  false,
+                                           "broad_regression_first_attempt":  {
+                                                                                  "passed_switches":  18,
+                                                                                  "followup":  "Target TabControl query by TabItem type without reducing any30-switch14-step acceptance assertions; rerun with final artifact.",
+                                                                                  "passed_steps":  8,
+                                                                                  "result":  "Fail",
+                                                                                  "reason":  "UIAutomation FindAll HRESULT0x80131505 timeout at repeated SwitchMeasured TabControl before any send",
+                                                                                  "report":  "G:/DevLocal/BuildTemp/iterate-desktop/send-handoff-20261009/regression-preflight/native-acceptance-101356/result.json"
+                                                                              }
+                                       },
+                         "final_acceptance":  {
+                                                  "artifact_sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                  "send_cases":  [
+                                                                     {
+                                                                         "trace":  {
+                                                                                       "both_hidden_samples":  0,
+                                                                                       "target_process_preserved":  true,
+                                                                                       "source_hwnd":  7080042,
+                                                                                       "target_hwnd":  69995686,
+                                                                                       "samples":  1737,
+                                                                                       "source_first_hidden_ms":  411.7026,
+                                                                                       "target_pid":  20520,
+                                                                                       "hidden_to_shown_ms":  -142.6035,
+                                                                                       "target_first_shown_ms":  269.0991,
+                                                                                       "legacy_target_sha256":  null,
+                                                                                       "scenario":  "success",
+                                                                                       "target_became_foreground":  true,
+                                                                                       "target_foreground_samples":  1640,
+                                                                                       "source_pid":  27492,
+                                                                                       "request_id":  "tabs-acceptance-0"
+                                                                                   },
+                                                                         "case":  "release-success",
+                                                                         "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                                         "steps":  4,
+                                                                         "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-success\\native-acceptance-102031\\result.json"
+                                                                     },
+                                                                     {
+                                                                         "trace":  {
+                                                                                       "both_hidden_samples":  0,
+                                                                                       "target_process_preserved":  true,
+                                                                                       "source_hwnd":  1444994,
+                                                                                       "target_hwnd":  396438,
+                                                                                       "samples":  530,
+                                                                                       "source_first_hidden_ms":  431.15770000000003,
+                                                                                       "target_pid":  5488,
+                                                                                       "hidden_to_shown_ms":  -158.88080000000002,
+                                                                                       "target_first_shown_ms":  272.2769,
+                                                                                       "legacy_target_sha256":  null,
+                                                                                       "scenario":  "failure",
+                                                                                       "target_became_foreground":  true,
+                                                                                       "target_foreground_samples":  345,
+                                                                                       "source_pid":  31356,
+                                                                                       "request_id":  "tabs-acceptance-0"
+                                                                                   },
+                                                                         "case":  "release-failure",
+                                                                         "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                                         "steps":  3,
+                                                                         "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-failure\\native-acceptance-102042\\result.json"
+                                                                     },
+                                                                     {
+                                                                         "trace":  {
+                                                                                       "both_hidden_samples":  0,
+                                                                                       "target_process_preserved":  true,
+                                                                                       "source_hwnd":  4066358,
+                                                                                       "target_hwnd":  13174292,
+                                                                                       "samples":  881,
+                                                                                       "source_first_hidden_ms":  420.0625,
+                                                                                       "target_pid":  30836,
+                                                                                       "hidden_to_shown_ms":  -151.87599999999998,
+                                                                                       "target_first_shown_ms":  268.1865,
+                                                                                       "legacy_target_sha256":  null,
+                                                                                       "scenario":  "failure-after-edit",
+                                                                                       "target_became_foreground":  true,
+                                                                                       "target_foreground_samples":  786,
+                                                                                       "source_pid":  31248,
+                                                                                       "request_id":  "tabs-acceptance-0"
+                                                                                   },
+                                                                         "case":  "release-failure-after-edit",
+                                                                         "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                                         "steps":  5,
+                                                                         "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-failure-after-edit\\native-acceptance-102048\\result.json"
+                                                                     },
+                                                                     {
+                                                                         "trace":  {
+                                                                                       "both_hidden_samples":  0,
+                                                                                       "target_process_preserved":  true,
+                                                                                       "source_hwnd":  4197292,
+                                                                                       "target_hwnd":  658298,
+                                                                                       "samples":  2234,
+                                                                                       "source_first_hidden_ms":  424.8349,
+                                                                                       "target_pid":  25824,
+                                                                                       "hidden_to_shown_ms":  -155.7842,
+                                                                                       "target_first_shown_ms":  269.0507,
+                                                                                       "legacy_target_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+                                                                                       "scenario":  "success",
+                                                                                       "target_became_foreground":  true,
+                                                                                       "target_foreground_samples":  2138,
+                                                                                       "source_pid":  27916,
+                                                                                       "request_id":  "tabs-acceptance-0"
+                                                                                   },
+                                                                         "case":  "release-mixed-retry",
+                                                                         "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                                         "steps":  4,
+                                                                         "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-mixed-retry\\native-acceptance-102155\\result.json"
+                                                                     },
+                                                                     {
+                                                                         "trace":  {
+                                                                                       "both_hidden_samples":  0,
+                                                                                       "target_process_preserved":  true,
+                                                                                       "source_hwnd":  13699800,
+                                                                                       "target_hwnd":  1641724,
+                                                                                       "samples":  2385,
+                                                                                       "source_first_hidden_ms":  422.94050000000004,
+                                                                                       "target_pid":  21000,
+                                                                                       "hidden_to_shown_ms":  -143.6379,
+                                                                                       "target_first_shown_ms":  279.30260000000004,
+                                                                                       "legacy_target_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+                                                                                       "scenario":  "success",
+                                                                                       "target_became_foreground":  true,
+                                                                                       "target_foreground_samples":  2286,
+                                                                                       "source_pid":  25672,
+                                                                                       "request_id":  "tabs-acceptance-0"
+                                                                                   },
+                                                                         "case":  "installed-smoke",
+                                                                         "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                                                                         "steps":  4,
+                                                                         "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\installed-smoke\\native-acceptance-102527\\result.json"
+                                                                     }
+                                                                 ],
+                                                  "send_trace_samples":  7767,
+                                                  "send_both_hidden_samples":  0,
+                                                  "regression_report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\regression-release\\native-acceptance-102235\\result.json",
+                                                  "regression_steps":  14,
+                                                  "regression_switches":  30,
+                                                  "regression_samples":  6786,
+                                                  "regression_gap_samples":  0,
+                                                  "native_tests":  11,
+                                                  "submission_tests":  16,
+                                                  "assets":  70,
+                                                  "jev":  "Skipped by user",
+                                                  "historical_failed_attempts":  {
+                                                                                     "preflight_regression":  "UIAutomation FindAll timeout before send,8steps/18switches passed",
+                                                                                     "release_mixed":  "Foreground moved to external PID5512; actual retry Pass",
+                                                                                     "older51EAE_full_suite":  "Retained original Fail; currentA705 full14-step suite Pass"
+                                                                                 }
+                                              },
+                         "installed":  true,
+                         "installed_legacy_windows_limit":  "Existing editing source processes retain old code until naturally closed; newly launched sender uses A705 and can directly hand over to existing51EAE target without recreating it. Six existing editor processes preserved.",
+                         "installation_manifest":  "G:/DevLocal/BuildTemp/iterate-desktop/send-handoff-20261009/installation.json",
+                         "real_user_smoke":  {
+                                                 "continued_conversation":  true,
+                                                 "measurement_limit":  "Post-send foreground snapshot only; does not measure this live send transition latency.",
+                                                 "selected_tab_pid":  20836,
+                                                 "foreground_visible":  true,
+                                                 "state_path":  "C:/Users/liguo/AppData/Local/Temp/iterate_popup_tabs.json",
+                                                 "received_text":  "测试",
+                                                 "foreground_pid":  20836,
+                                                 "checked_at":  "2026-10-09T10:34:40.9848845+08:00",
+                                                 "foreground_hwnd":  10554454
+                                             }
+                     },
+    "tab_title":  {
+                      "baseline_exe":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                      "actual_gui":  "14 steps and30 transitions Pass;40px height;0 duplicate title Text nodes;separate-window title restored",
+                      "tab_min_height_px":  40,
+                      "lint":  "PopupTabs and AppContent Pass;0 errors,0 warnings",
+                      "owned_files":  [
+                                          "PopupTabs.vue",
+                                          "AppContent.vue"
+                                      ],
+                      "user_request":  "tab就是标题了，让tab高一点；下方不用重复显示标题。",
+                      "frontend_build":  "Pass",
+                      "title_visibility":  "Hide header conversation title while valid tabs visible; restore for separate windows",
+                      "task_path":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-title-20261009",
+                      "jev":  "Skipped, explicit user preference from session",
+                      "status":  "installed_actual_ui_accepted_jev_skipped_by_user",
+                      "tab_font_px":  14,
+                      "installed_sha256":  "2D18F622BE61DF6394CCAD118C752FBD128B7885EB97B74AB97BA7ED7FBD4B86",
+                      "installation_manifest":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\installation.json",
+                      "acceptance":  {
+                                         "root":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\ui-final\\native-acceptance-113407",
+                                         "sha256":  "2D18F622BE61DF6394CCAD118C752FBD128B7885EB97B74AB97BA7ED7FBD4B86",
+                                         "result":  "Pass",
+                                         "transitions":  [
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  214,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  267,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  270,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  2,
+                                                                 "from":  1,
+                                                                 "samples":  147,
+                                                                 "input":  "Ctrl+Tab",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  2,
+                                                                 "samples":  143,
+                                                                 "input":  "Ctrl+Tab",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  149,
+                                                                 "input":  "Ctrl+Tab",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  207,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  291,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  203,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  202,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  203,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  272,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  283,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  275,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  277,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  198,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  191,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  194,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  265,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  276,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  206,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  198,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  195,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  208,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  280,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  200,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  271,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  281,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  0,
+                                                                 "from":  1,
+                                                                 "samples":  204,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             },
+                                                             {
+                                                                 "exposed_samples":  0,
+                                                                 "to":  1,
+                                                                 "from":  0,
+                                                                 "samples":  271,
+                                                                 "input":  "click",
+                                                                 "exposed_ms":  0,
+                                                                 "result":  "Pass"
+                                                             }
+                                                         ],
+                                         "steps":  [
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "default-separate-windows-with-title"
+                                                       },
+                                                       {
+                                                           "step":  "enable-tabs-through-settings-and-persist",
+                                                           "result":  "Pass",
+                                                           "width":  616,
+                                                           "height":  939
+                                                       },
+                                                       {
+                                                           "step":  "taller-tab-is-the-only-conversation-title",
+                                                           "result":  "Pass",
+                                                           "duplicate_title_text_nodes":  0,
+                                                           "tab_height":  40
+                                                       },
+                                                       {
+                                                           "step":  "tabs-visibly-separated",
+                                                           "result":  "Pass",
+                                                           "gap":  3
+                                                       },
+                                                       {
+                                                           "step":  "background-tab-keeps-window-focus-caret",
+                                                           "result":  "Pass",
+                                                           "draft":  "abcXdef"
+                                                       },
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "tab-switch-independent-drafts"
+                                                       },
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "plain-tab-no-longer-minimizes-popup"
+                                                       },
+                                                       {
+                                                           "step":  "ctrl-tab-cycles-next-wrap-first",
+                                                           "result":  "Pass",
+                                                           "sequence":  [
+                                                                            1,
+                                                                            2,
+                                                                            0,
+                                                                            1
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "step":  "repeated-switch-no-desktop-exposure",
+                                                           "result":  "Pass",
+                                                           "transitions":  30,
+                                                           "sampling_ms":  2
+                                                       },
+                                                       {
+                                                           "step":  "send-middle-advances-to-right-tab",
+                                                           "result":  "Pass",
+                                                           "actual_request_id":  "tabs-acceptance-1"
+                                                       },
+                                                       {
+                                                           "step":  "send-last-wraps-to-first-and-preserves-draft",
+                                                           "result":  "Pass",
+                                                           "actual_request_id":  "tabs-acceptance-2"
+                                                       },
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "ctrl-tab-one-tab-keeps-current"
+                                                       },
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "return-to-separate-windows-restores-title"
+                                                       },
+                                                       {
+                                                           "result":  "Pass",
+                                                           "step":  "saved-tabs-mode-keeps-title-in-tab-only"
+                                                       }
+                                                   ],
+                                         "artifact":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-title-20261009/iterate-title-final.exe"
+                                     },
+                      "release_build":  "Pass;10m07s;70 embedded frontend assets verified",
+                      "existing_windows_limit":  "Running editing processes preserved;newly opened windows use taller Tab and hide duplicate title."
+                  }
+}

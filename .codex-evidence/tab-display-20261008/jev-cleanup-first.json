@@ -1,0 +1,88 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claims_unsupported",
+    "claim_confidence_low"
+  ],
+  "review": {
+    "safe_to_apply": 0.35,
+    "scores": {
+      "correctness": {
+        "score": 1.21,
+        "confidence": 0.2
+      },
+      "spec_match": {
+        "score": 1.12,
+        "confidence": 0.41
+      },
+      "test_gap": {
+        "score": 0.67,
+        "confidence": 0.27
+      },
+      "blast_radius": {
+        "score": 1.76,
+        "confidence": 0.64
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.52775
+  },
+  "verification": {
+    "action": "escalate",
+    "summary": {
+      "verified": 1,
+      "contradicted": 0,
+      "unsupported": 1,
+      "needs_review": 2,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "HTTP回归验证：缺失注册、云端拒绝关闭、HTTP503均不阻止后续已结束请求关闭，活跃请求不发送close，批次仍返回incomplete。",
+        "verdict": "verified",
+        "confidence": 0.35,
+        "probabilities": {
+          "contradicted": 0.02,
+          "verified": 0.57,
+          "unsupported": 0.41
+        },
+        "action": "escalate"
+      },
+      {
+        "claim": "已取得新native owner时，只退休本地visibility账本已知且身份属于不同owner的旧提问；相同owner、无owner、缺失账本及无效ID不会因此关闭，actions回执和历史字段保留。",
+        "verdict": "unsupported",
+        "confidence": 0.38,
+        "probabilities": {
+          "unsupported": 0.59,
+          "verified": 0.4,
+          "contradicted": 0.01
+        },
+        "action": "escalate"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 6756,
+    "output_tokens": 158
+  }
+}

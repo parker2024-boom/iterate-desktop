@@ -1,0 +1,132 @@
+--- repo/before/src/frontend/components/popup/PopupTabs.vue
++++ repo/after/src/frontend/components/popup/PopupTabs.vue
+@@ -1,15 +1,17 @@
+ <script setup lang="ts">
+ import { invoke } from '@tauri-apps/api/core'
+ import { listen } from '@tauri-apps/api/event'
+-import { computed, onMounted, onUnmounted, ref } from 'vue'
++import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+ 
+ interface Tab { pid: number, request_id: string, title: string, project_path: string, unread: boolean }
+ interface Snapshot { mode: 'windows' | 'tabs', current_pid: number, active_pid: number | null, tabs: Tab[] }
+ const props = defineProps<{ requestId?: string }>()
++const emit = defineEmits<{ visibilityChange: [visible: boolean] }>()
+ const snapshot = ref<Snapshot | null>(null)
+ const error = ref('')
+ const visible = computed(() => snapshot.value?.mode === 'tabs'
+   && snapshot.value.tabs.some(tab => tab.pid === snapshot.value?.current_pid && tab.request_id === props.requestId))
++watch(visible, value => emit('visibilityChange', value), { immediate: true, flush: 'sync' })
+ let unlisten: (() => void) | undefined
+ let disposed = false
+ onMounted(async () => {
+@@ -31,6 +33,7 @@
+ })
+ onUnmounted(() => {
+   disposed = true
++  emit('visibilityChange', false)
+   window.removeEventListener('keydown', handleTabSwitchKeydown, true)
+   unlisten?.()
+ })
+@@ -68,7 +71,7 @@
+         v-for="tab in snapshot?.tabs" :key="`${tab.pid}:${tab.request_id}`"
+         type="button" role="tab" :aria-selected="tab.pid === snapshot?.current_pid"
+         :title="`${tab.title}\n${tab.project_path}`"
+-        class="max-w-48 flex-shrink-0 truncate rounded border border-solid px-3 py-1 text-xs"
++        class="min-h-10 max-w-48 flex-shrink-0 truncate rounded border border-solid px-3 py-2 text-sm"
+         :class="tab.pid === snapshot?.current_pid ? 'border-white bg-black-300 text-white font-medium' : 'border-[var(--color-on-surface-muted)] bg-black-50 text-[var(--color-on-surface-secondary)] hover:bg-black-200 hover:text-white'"
+         @click="select(tab)"
+       >
+--- repo/before/src/frontend/components/AppContent.vue
++++ repo/after/src/frontend/components/AppContent.vue
+@@ -163,6 +163,7 @@
+ 
+ // 弹窗中的设置显示控制
+ const showPopupSettings = ref(false)
++const popupTabsVisible = ref(false)
+ 
+ const showIteratePairingModal = ref(false)
+ 
+@@ -1750,7 +1751,7 @@
+     >
+       <!-- 头部 - 固定在顶部 -->
+       <div class="sticky top-0 z-50 flex-shrink-0 bg-black-100 border-b-2 border-black-200">
+-        <PopupTabs :request-id="props.mcpRequest?.id" />
++        <PopupTabs :request-id="props.mcpRequest?.id" @visibility-change="popupTabsVisible = $event" />
+         <PopupHeader
+           :current-theme="props.appConfig.theme"
+           :loading="false"
+@@ -1760,7 +1761,7 @@
+           :shortcut-enabled="localShortcutEnabled"
+           :project-path="effectiveProjectPath"
+           :codex-thread-id="props.mcpRequest?.codex_thread_id"
+-          :conversation-title="props.mcpRequest?.conversation_title"
++          :conversation-title="popupTabsVisible ? undefined : props.mcpRequest?.conversation_title"
+           :link-url="props.mcpRequest?.link_url"
+           :link-title="props.mcpRequest?.link_title"
+           :quota-providers="quotaProviders"
+--- frozen/before/src/frontend/components/popup/PopupTabs.vue
++++ frozen/after/src/frontend/components/popup/PopupTabs.vue
+@@ -1,15 +1,17 @@
+ <script setup lang="ts">
+ import { invoke } from '@tauri-apps/api/core'
+ import { listen } from '@tauri-apps/api/event'
+-import { computed, onMounted, onUnmounted, ref } from 'vue'
++import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+ 
+ interface Tab { pid: number, request_id: string, title: string, project_path: string, unread: boolean }
+ interface Snapshot { mode: 'windows' | 'tabs', current_pid: number, active_pid: number | null, tabs: Tab[] }
+ const props = defineProps<{ requestId?: string }>()
++const emit = defineEmits<{ visibilityChange: [visible: boolean] }>()
+ const snapshot = ref<Snapshot | null>(null)
+ const error = ref('')
+ const visible = computed(() => snapshot.value?.mode === 'tabs'
+   && snapshot.value.tabs.some(tab => tab.pid === snapshot.value?.current_pid && tab.request_id === props.requestId))
++watch(visible, value => emit('visibilityChange', value), { immediate: true, flush: 'sync' })
+ let unlisten: (() => void) | undefined
+ let disposed = false
+ onMounted(async () => {
+@@ -31,6 +33,7 @@
+ })
+ onUnmounted(() => {
+   disposed = true
++  emit('visibilityChange', false)
+   window.removeEventListener('keydown', handleTabSwitchKeydown, true)
+   unlisten?.()
+ })
+@@ -68,7 +71,7 @@
+         v-for="tab in snapshot?.tabs" :key="`${tab.pid}:${tab.request_id}`"
+         type="button" role="tab" :aria-selected="tab.pid === snapshot?.current_pid"
+         :title="`${tab.title}\n${tab.project_path}`"
+-        class="max-w-48 flex-shrink-0 truncate rounded border border-solid px-3 py-1 text-xs"
++        class="min-h-10 max-w-48 flex-shrink-0 truncate rounded border border-solid px-3 py-2 text-sm"
+         :class="tab.pid === snapshot?.current_pid ? 'border-white bg-black-300 text-white font-medium' : 'border-[var(--color-on-surface-muted)] bg-black-50 text-[var(--color-on-surface-secondary)] hover:bg-black-200 hover:text-white'"
+         @click="select(tab)"
+       >
+--- frozen/before/src/frontend/components/AppContent.vue
++++ frozen/after/src/frontend/components/AppContent.vue
+@@ -140,6 +140,7 @@
+ 
+ // 弹窗中的设置显示控制
+ const showPopupSettings = ref(false)
++const popupTabsVisible = ref(false)
+ 
+ const showIteratePairingModal = ref(false)
+ 
+@@ -1691,7 +1692,7 @@
+     >
+       <!-- 头部 - 固定在顶部 -->
+       <div class="sticky top-0 z-50 flex-shrink-0 bg-black-100 border-b-2 border-black-200">
+-        <PopupTabs :request-id="props.mcpRequest?.id" />
++        <PopupTabs :request-id="props.mcpRequest?.id" @visibility-change="popupTabsVisible = $event" />
+         <PopupHeader
+           :current-theme="props.appConfig.theme"
+           :loading="false"
+@@ -1701,7 +1702,7 @@
+           :shortcut-enabled="localShortcutEnabled"
+           :project-path="effectiveProjectPath"
+           :codex-thread-id="props.mcpRequest?.codex_thread_id"
+-          :conversation-title="props.mcpRequest?.conversation_title"
++          :conversation-title="popupTabsVisible ? undefined : props.mcpRequest?.conversation_title"
+           :link-url="props.mcpRequest?.link_url"
+           :link-title="props.mcpRequest?.link_title"
+           :quota-providers="quotaProviders"

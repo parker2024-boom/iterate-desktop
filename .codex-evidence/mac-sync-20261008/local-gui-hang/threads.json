@@ -1,0 +1,398 @@
+[
+    {
+        "Id":  22476,
+        "ThreadState":  5,
+        "WaitReason":  6,
+        "TotalProcessorTime":  {
+                                   "Ticks":  24375000,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  437,
+                                   "Minutes":  0,
+                                   "Seconds":  2,
+                                   "TotalDays":  2.8211805555555554E-05,
+                                   "TotalHours":  0.00067708333333333336,
+                                   "TotalMilliseconds":  2437.5,
+                                   "TotalMinutes":  0.040625,
+                                   "TotalSeconds":  2.4375
+                               }
+    },
+    {
+        "Id":  10792,
+        "ThreadState":  5,
+        "WaitReason":  6,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  32904,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  2656250,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  265,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  3.074363425925926E-06,
+                                   "TotalHours":  7.3784722222222223E-05,
+                                   "TotalMilliseconds":  265.625,
+                                   "TotalMinutes":  0.0044270833333333332,
+                                   "TotalSeconds":  0.265625
+                               }
+    },
+    {
+        "Id":  36384,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  29516,
+        "ThreadState":  5,
+        "WaitReason":  6,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  29264,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  1562500,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  156,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  1.8084490740740739E-06,
+                                   "TotalHours":  4.3402777777777773E-05,
+                                   "TotalMilliseconds":  156.25,
+                                   "TotalMinutes":  0.0026041666666666665,
+                                   "TotalSeconds":  0.15625
+                               }
+    },
+    {
+        "Id":  36608,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  41016,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  4531250,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  453,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  5.2445023148148144E-06,
+                                   "TotalHours":  0.00012586805555555555,
+                                   "TotalMilliseconds":  453.125,
+                                   "TotalMinutes":  0.0075520833333333334,
+                                   "TotalSeconds":  0.453125
+                               }
+    },
+    {
+        "Id":  14800,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  32344,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  7187500,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  718,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  8.3188657407407412E-06,
+                                   "TotalHours":  0.00019965277777777776,
+                                   "TotalMilliseconds":  718.75,
+                                   "TotalMinutes":  0.011979166666666667,
+                                   "TotalSeconds":  0.71875
+                               }
+    },
+    {
+        "Id":  39376,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  26612,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  11268,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  19404,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  15632,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  156250,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  15,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  1.808449074074074E-07,
+                                   "TotalHours":  4.3402777777777778E-06,
+                                   "TotalMilliseconds":  15.625,
+                                   "TotalMinutes":  0.00026041666666666666,
+                                   "TotalSeconds":  0.015625
+                               }
+    },
+    {
+        "Id":  15520,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  9428,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  3906250,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  390,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  4.5211226851851849E-06,
+                                   "TotalHours":  0.00010850694444444444,
+                                   "TotalMilliseconds":  390.625,
+                                   "TotalMinutes":  0.006510416666666667,
+                                   "TotalSeconds":  0.390625
+                               }
+    },
+    {
+        "Id":  28836,
+        "ThreadState":  5,
+        "WaitReason":  13,
+        "TotalProcessorTime":  {
+                                   "Ticks":  2031250,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  203,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  2.350983796296296E-06,
+                                   "TotalHours":  5.6423611111111109E-05,
+                                   "TotalMilliseconds":  203.125,
+                                   "TotalMinutes":  0.0033854166666666668,
+                                   "TotalSeconds":  0.203125
+                               }
+    },
+    {
+        "Id":  37496,
+        "ThreadState":  5,
+        "WaitReason":  6,
+        "TotalProcessorTime":  {
+                                   "Ticks":  2812500,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  281,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  3.2552083333333331E-06,
+                                   "TotalHours":  7.8125E-05,
+                                   "TotalMilliseconds":  281.25,
+                                   "TotalMinutes":  0.0046875,
+                                   "TotalSeconds":  0.28125
+                               }
+    },
+    {
+        "Id":  22564,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  9040,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    },
+    {
+        "Id":  29772,
+        "ThreadState":  5,
+        "WaitReason":  8,
+        "TotalProcessorTime":  {
+                                   "Ticks":  0,
+                                   "Days":  0,
+                                   "Hours":  0,
+                                   "Milliseconds":  0,
+                                   "Minutes":  0,
+                                   "Seconds":  0,
+                                   "TotalDays":  0,
+                                   "TotalHours":  0,
+                                   "TotalMilliseconds":  0,
+                                   "TotalMinutes":  0,
+                                   "TotalSeconds":  0
+                               }
+    }
+]

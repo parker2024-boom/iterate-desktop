@@ -1,0 +1,582 @@
+--- repo/before/src/rust/ui/popup_tabs.rs
++++ repo/after/src/rust/ui/popup_tabs.rs
+@@ -12,6 +12,10 @@
+ static REGISTERED: AtomicBool = AtomicBool::new(false);
+ static SEND_WAS_FOREGROUND: AtomicBool = AtomicBool::new(false);
+ static SEND_INPUT_TIME: AtomicU32 = AtomicU32::new(0);
++static SEND_HANDOFF: std::sync::Mutex<Option<SendHandoff>> = std::sync::Mutex::new(None);
++
++#[derive(Debug, Clone)]
++struct SendHandoff { request_id: String, target_pid: u32, input_time: Option<u32> }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+ pub struct Tab {
+@@ -83,6 +87,24 @@
+         let active = self.active_pid == Some(pid);
+         self.reconcile(|tab| tab.pid != pid);
+         Ok(active)
++    }
++
++    fn send_successor(&self, pid: u32) -> Option<u32> {
++        if self.mode != PopupDisplayMode::Tabs || self.active_pid != Some(pid) || self.tabs.len() < 2 {
++            return None;
++        }
++        let index = self.tabs.iter().position(|tab| tab.pid == pid)?;
++        Some(self.tabs[(index + 1) % self.tabs.len()].pid)
++    }
++
++    fn restore_send_handoff(&mut self, pid: u32, handoff: &SendHandoff) -> bool {
++        if self.mode != PopupDisplayMode::Tabs || self.active_pid != Some(handoff.target_pid)
++            || !self.tabs.iter().any(|tab| tab.pid == pid && tab.request_id == handoff.request_id) {
++            return false;
++        }
++        if self.select(pid).is_err() { return false; }
++        self.focus_pid = None;
++        true
+     }
+ 
+     fn snapshot(&self) -> Snapshot {
+@@ -185,11 +207,11 @@
+ }
+ 
+ #[cfg(target_os = "windows")]
+-fn tab_window_visible(pid: u32) -> bool {
++fn tab_window(pid: u32) -> Option<windows_sys::Win32::Foundation::HWND> {
+     use windows_sys::Win32::Foundation::{HWND, LPARAM};
+     use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW,
+-        GetWindowThreadProcessId, IsIconic, IsWindowVisible};
+-    struct Search { pid: u32, visible: bool }
++        GetWindowThreadProcessId};
++    struct Search { pid: u32, hwnd: Option<HWND> }
+     unsafe extern "system" fn inspect(hwnd: HWND, data: LPARAM) -> i32 {
+         let search = &mut *(data as *mut Search);
+         let mut owner = 0;
+@@ -198,15 +220,23 @@
+             let mut class = [0u16; 32];
+             let len = GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32);
+             if len > 0 && class[..len as usize].iter().copied().eq("Tauri Window".encode_utf16()) {
+-                search.visible = IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0;
++                search.hwnd = Some(hwnd);
+                 return 0;
+             }
+         }
+         1
+     }
+-    let mut search = Search { pid, visible: false };
++    let mut search = Search { pid, hwnd: None };
+     unsafe { EnumWindows(Some(inspect), &mut search as *mut Search as LPARAM); }
+-    search.visible
++    search.hwnd
++}
++
++#[cfg(target_os = "windows")]
++fn tab_window_visible(pid: u32) -> bool {
++    tab_window(pid).is_some_and(|hwnd| unsafe {
++        use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
++        IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0
++    })
+ }
+ 
+ fn handoff_ready(active_pid: Option<u32>, destination_visible: bool) -> bool {
+@@ -251,6 +281,110 @@
+ 
+ fn may_handoff_focus(was_foreground: bool, input_time: u32, current_input: Option<u32>) -> bool {
+     was_foreground && current_input == Some(input_time)
++}
++
++/// Hand the existing peer window over while the sending window still owns
++/// foreground permission. The source request remains live until its real ACK.
++pub fn prepare_send_handoff(window: &tauri::WebviewWindow) -> Result<(), String> {
++    remember_send_focus(window);
++    if !REGISTERED.load(Ordering::SeqCst) { return Ok(()); }
++    #[cfg(target_os = "windows")]
++    {
++        use windows_sys::Win32::Foundation::RECT;
++        use windows_sys::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow,
++            GetClientRect, GetForegroundWindow, GetWindowRect, IsWindowVisible,
++            SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER,
++            SW_SHOWNOACTIVATE};
++        let source = window.hwnd().map_err(|e| e.to_string())?.0;
++        let foreground = unsafe { GetForegroundWindow() == source };
++        let current_geometry = geometry(window);
++        let mut destination = None;
++        let mut handoff = None;
++        let group = update(|group| {
++            let Some(next_pid) = group.send_successor(std::process::id()) else { return Ok(()) };
++            let Some(hwnd) = tab_window(next_pid) else { return Err("下一标签窗口尚不可用".into()) };
++            let request_id = group.tabs.iter().find(|tab| tab.pid == std::process::id())
++                .ok_or("发送标签已关闭")?.request_id.clone();
++            if foreground { unsafe { AllowSetForegroundWindow(next_pid); } }
++            group.select(next_pid)?;
++            // Native activation below is immediate. The later worker must not
++            // activate again after the user has moved to another application.
++            group.focus_pid = None;
++            group.geometry = current_geometry.clone();
++            destination = Some(hwnd);
++            handoff = Some(SendHandoff { request_id, target_pid: next_pid, input_time: last_input_time() });
++            Ok(())
++        })?;
++        let Some(target) = destination else { return Ok(()) };
++        *SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")? = handoff;
++        let presented = (|| -> Result<(), String> {
++            if let Some(g) = group.geometry.as_ref() {
++                let mut outer: RECT = unsafe { std::mem::zeroed() };
++                let mut client: RECT = unsafe { std::mem::zeroed() };
++                if unsafe { GetWindowRect(target, &mut outer) } == 0
++                    || unsafe { GetClientRect(target, &mut client) } == 0 {
++                    return Err("无法读取下一标签窗口尺寸".into());
++                }
++                let width = g.width as i32 + (outer.right - outer.left) - (client.right - client.left);
++                let height = g.height as i32 + (outer.bottom - outer.top) - (client.bottom - client.top);
++                if unsafe { SetWindowPos(target, std::ptr::null_mut(), g.x, g.y, width, height,
++                    SWP_NOACTIVATE | SWP_NOZORDER) } == 0 {
++                    return Err("无法对齐下一标签窗口".into());
++                }
++            }
++            unsafe { ShowWindow(target, SW_SHOWNOACTIVATE); }
++            if unsafe { IsWindowVisible(target) } == 0 {
++                return Err("下一标签窗口未显示，保留当前窗口".into());
++            }
++            // Do this before hiding the source, not after a network ACK or a
++            // timer tick. Ordinary mouse movement after send cannot cancel it.
++            if foreground && (unsafe { GetForegroundWindow() == source }
++                || may_handoff_focus(true, SEND_INPUT_TIME.load(Ordering::SeqCst), last_input_time())) {
++                unsafe { SetForegroundWindow(target); }
++            }
++            log::info!("[Tab send handoff] source={} target={} foreground={}",
++                std::process::id(), group.active_pid.unwrap_or_default(), foreground);
++            Ok(())
++        })();
++        if presented.is_err() {
++            let pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?.take();
++            if let Some(pending) = pending {
++                update(|group| { group.restore_send_handoff(std::process::id(), &pending); Ok(()) })?;
++            }
++        }
++        presented?;
++    }
++    Ok(())
++}
++
++/// Restore a failed send without taking over a peer the user has since edited
++/// or selected. Returning true means tab presentation has been handled here.
++#[tauri::command]
++pub fn restore_popup_tab(app: AppHandle) -> Result<bool, String> {
++    if !REGISTERED.load(Ordering::SeqCst) { return Ok(false); }
++    let pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?.take();
++    let Some(pending) = pending else { return Ok(false) };
++    let mut restored = false;
++    update(|group| {
++        if pending.input_time.is_some() && pending.input_time == last_input_time() {
++            restored = group.restore_send_handoff(std::process::id(), &pending);
++        }
++        Ok(())
++    })?;
++    if restored {
++        let window = app.get_webview_window("main").ok_or("窗口不存在")?;
++        #[cfg(target_os = "windows")]
++        let focus = unsafe {
++            use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
++            let foreground = GetForegroundWindow();
++            window.hwnd().is_ok_and(|hwnd| hwnd.0 == foreground)
++                || tab_window(pending.target_pid) == Some(foreground)
++        };
++        #[cfg(not(target_os = "windows"))]
++        let focus = false;
++        show(&window, focus)?;
++    }
++    Ok(true)
+ }
+ 
+ /// Called only after the real send ACK, before optional cloud cleanup or exit.
+@@ -273,6 +407,8 @@
+         }
+         Ok(())
+     })?;
++    let mut pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?;
++    if pending.as_ref().is_some_and(|handoff| handoff.request_id == request_id) { *pending = None; }
+     Ok(())
+ }
+ 
+@@ -516,4 +652,48 @@
+         assert!(handoff_ready(Some(3), true));
+         assert!(handoff_ready(None, false));
+     }
+-}
++
++    #[test]
++    fn send_handoff_keeps_request_until_ack_and_does_not_skip_successor() {
++        let mut g = group();
++        g.select(2).unwrap();
++        let next = g.send_successor(2).unwrap();
++        assert_eq!(next, 3);
++        g.select(next).unwrap();
++        assert_eq!(g.tabs.len(), 3); // Still pending, not an acknowledged completion.
++        assert_eq!(g.tabs[1].request_id, "req-2");
++        assert!(!g.complete(2, "req-2").unwrap());
++        assert_eq!(g.active_pid, Some(3));
++        assert_eq!(g.send_successor(3), Some(1));
++        assert_eq!(g.tabs.len(), 2);
++        assert_eq!(g.send_successor(1), None); // Background sends never take over.
++    }
++
++    #[test]
++    fn failed_handoff_restores_only_original_request_and_unchanged_selection() {
++        let mut g = group();
++        let pending = SendHandoff { request_id: "req-1".into(), target_pid: 2, input_time: Some(123) };
++        g.select(2).unwrap();
++        assert!(g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(1));
++        assert_eq!(g.focus_pid, None);
++        assert_eq!(g.tabs.len(), 3);
++        g.select(3).unwrap();
++        assert!(!g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(3));
++        g.select(2).unwrap();
++        g.tabs[0].request_id = "new-request".into();
++        assert!(!g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(2));
++    }
++
++    #[test]
++    fn separate_windows_and_single_tab_do_not_prepare_peer_handoff() {
++        let mut g = group();
++        g.mode = PopupDisplayMode::Windows;
++        assert_eq!(g.send_successor(1), None);
++        g.mode = PopupDisplayMode::Tabs;
++        g.tabs.truncate(1);
++        assert_eq!(g.send_successor(1), None);
++    }
++}
+--- repo/before/src/rust/ui/commands.rs
++++ repo/after/src/rust/ui/commands.rs
+@@ -95,7 +95,7 @@
+ }
+ 
+ fn hide_mcp_window_on_main_thread(window: &tauri::WebviewWindow) -> Result<(), String> {
+-    crate::ui::popup_tabs::remember_send_focus(window);
++    crate::ui::popup_tabs::prepare_send_handoff(window)?;
+     window
+         .hide()
+         .map_err(|error| format!("failed to hide standalone MCP window: {error}"))?;
+--- repo/before/src/rust/app/builder.rs
++++ repo/after/src/rust/app/builder.rs
+@@ -644,6 +644,7 @@
+             crate::ui::popup_tabs::get_popup_tabs,
+             crate::ui::popup_tabs::select_popup_tab,
+             crate::ui::popup_tabs::complete_popup_tab,
++            crate::ui::popup_tabs::restore_popup_tab,
+             set_window_config,
+             get_reply_config,
+             set_reply_config,
+--- repo/before/src/frontend/composables/useMcpHandler.ts
++++ repo/after/src/frontend/composables/useMcpHandler.ts
+@@ -532,6 +532,8 @@
+ 
+     if (dismissal.hidStandaloneWindow) {
+       try {
++        if (await invoke<boolean>('restore_popup_tab'))
++          return
+         if (await shouldFocusPopupOnShow()) {
+           const window = getCurrentWindow()
+           await window.show()
+@@ -637,6 +639,8 @@
+             if (String(requestId || '').startsWith('cross-'))
+               crossDeviceSendError.value = String(error)
+             // No remount/resetForm: text, options and attachments stay in place.
++            if (await invoke<boolean>('restore_popup_tab'))
++              return
+             const window = getCurrentWindow()
+             await window.show()
+             const shouldFocus = await shouldFocusPopupOnShow()
+--- frozen/before/src/rust/ui/popup_tabs.rs
++++ frozen/after/src/rust/ui/popup_tabs.rs
+@@ -12,6 +12,10 @@
+ static REGISTERED: AtomicBool = AtomicBool::new(false);
+ static SEND_WAS_FOREGROUND: AtomicBool = AtomicBool::new(false);
+ static SEND_INPUT_TIME: AtomicU32 = AtomicU32::new(0);
++static SEND_HANDOFF: std::sync::Mutex<Option<SendHandoff>> = std::sync::Mutex::new(None);
++
++#[derive(Debug, Clone)]
++struct SendHandoff { request_id: String, target_pid: u32, input_time: Option<u32> }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+ pub struct Tab {
+@@ -83,6 +87,24 @@
+         let active = self.active_pid == Some(pid);
+         self.reconcile(|tab| tab.pid != pid);
+         Ok(active)
++    }
++
++    fn send_successor(&self, pid: u32) -> Option<u32> {
++        if self.mode != PopupDisplayMode::Tabs || self.active_pid != Some(pid) || self.tabs.len() < 2 {
++            return None;
++        }
++        let index = self.tabs.iter().position(|tab| tab.pid == pid)?;
++        Some(self.tabs[(index + 1) % self.tabs.len()].pid)
++    }
++
++    fn restore_send_handoff(&mut self, pid: u32, handoff: &SendHandoff) -> bool {
++        if self.mode != PopupDisplayMode::Tabs || self.active_pid != Some(handoff.target_pid)
++            || !self.tabs.iter().any(|tab| tab.pid == pid && tab.request_id == handoff.request_id) {
++            return false;
++        }
++        if self.select(pid).is_err() { return false; }
++        self.focus_pid = None;
++        true
+     }
+ 
+     fn snapshot(&self) -> Snapshot {
+@@ -185,11 +207,11 @@
+ }
+ 
+ #[cfg(target_os = "windows")]
+-fn tab_window_visible(pid: u32) -> bool {
++fn tab_window(pid: u32) -> Option<windows_sys::Win32::Foundation::HWND> {
+     use windows_sys::Win32::Foundation::{HWND, LPARAM};
+     use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW,
+-        GetWindowThreadProcessId, IsIconic, IsWindowVisible};
+-    struct Search { pid: u32, visible: bool }
++        GetWindowThreadProcessId};
++    struct Search { pid: u32, hwnd: Option<HWND> }
+     unsafe extern "system" fn inspect(hwnd: HWND, data: LPARAM) -> i32 {
+         let search = &mut *(data as *mut Search);
+         let mut owner = 0;
+@@ -198,15 +220,23 @@
+             let mut class = [0u16; 32];
+             let len = GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32);
+             if len > 0 && class[..len as usize].iter().copied().eq("Tauri Window".encode_utf16()) {
+-                search.visible = IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0;
++                search.hwnd = Some(hwnd);
+                 return 0;
+             }
+         }
+         1
+     }
+-    let mut search = Search { pid, visible: false };
++    let mut search = Search { pid, hwnd: None };
+     unsafe { EnumWindows(Some(inspect), &mut search as *mut Search as LPARAM); }
+-    search.visible
++    search.hwnd
++}
++
++#[cfg(target_os = "windows")]
++fn tab_window_visible(pid: u32) -> bool {
++    tab_window(pid).is_some_and(|hwnd| unsafe {
++        use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
++        IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0
++    })
+ }
+ 
+ fn handoff_ready(active_pid: Option<u32>, destination_visible: bool) -> bool {
+@@ -251,6 +281,110 @@
+ 
+ fn may_handoff_focus(was_foreground: bool, input_time: u32, current_input: Option<u32>) -> bool {
+     was_foreground && current_input == Some(input_time)
++}
++
++/// Hand the existing peer window over while the sending window still owns
++/// foreground permission. The source request remains live until its real ACK.
++pub fn prepare_send_handoff(window: &tauri::WebviewWindow) -> Result<(), String> {
++    remember_send_focus(window);
++    if !REGISTERED.load(Ordering::SeqCst) { return Ok(()); }
++    #[cfg(target_os = "windows")]
++    {
++        use windows_sys::Win32::Foundation::RECT;
++        use windows_sys::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow,
++            GetClientRect, GetForegroundWindow, GetWindowRect, IsWindowVisible,
++            SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER,
++            SW_SHOWNOACTIVATE};
++        let source = window.hwnd().map_err(|e| e.to_string())?.0;
++        let foreground = unsafe { GetForegroundWindow() == source };
++        let current_geometry = geometry(window);
++        let mut destination = None;
++        let mut handoff = None;
++        let group = update(|group| {
++            let Some(next_pid) = group.send_successor(std::process::id()) else { return Ok(()) };
++            let Some(hwnd) = tab_window(next_pid) else { return Err("下一标签窗口尚不可用".into()) };
++            let request_id = group.tabs.iter().find(|tab| tab.pid == std::process::id())
++                .ok_or("发送标签已关闭")?.request_id.clone();
++            if foreground { unsafe { AllowSetForegroundWindow(next_pid); } }
++            group.select(next_pid)?;
++            // Native activation below is immediate. The later worker must not
++            // activate again after the user has moved to another application.
++            group.focus_pid = None;
++            group.geometry = current_geometry.clone();
++            destination = Some(hwnd);
++            handoff = Some(SendHandoff { request_id, target_pid: next_pid, input_time: last_input_time() });
++            Ok(())
++        })?;
++        let Some(target) = destination else { return Ok(()) };
++        *SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")? = handoff;
++        let presented = (|| -> Result<(), String> {
++            if let Some(g) = group.geometry.as_ref() {
++                let mut outer: RECT = unsafe { std::mem::zeroed() };
++                let mut client: RECT = unsafe { std::mem::zeroed() };
++                if unsafe { GetWindowRect(target, &mut outer) } == 0
++                    || unsafe { GetClientRect(target, &mut client) } == 0 {
++                    return Err("无法读取下一标签窗口尺寸".into());
++                }
++                let width = g.width as i32 + (outer.right - outer.left) - (client.right - client.left);
++                let height = g.height as i32 + (outer.bottom - outer.top) - (client.bottom - client.top);
++                if unsafe { SetWindowPos(target, std::ptr::null_mut(), g.x, g.y, width, height,
++                    SWP_NOACTIVATE | SWP_NOZORDER) } == 0 {
++                    return Err("无法对齐下一标签窗口".into());
++                }
++            }
++            unsafe { ShowWindow(target, SW_SHOWNOACTIVATE); }
++            if unsafe { IsWindowVisible(target) } == 0 {
++                return Err("下一标签窗口未显示，保留当前窗口".into());
++            }
++            // Do this before hiding the source, not after a network ACK or a
++            // timer tick. Ordinary mouse movement after send cannot cancel it.
++            if foreground && (unsafe { GetForegroundWindow() == source }
++                || may_handoff_focus(true, SEND_INPUT_TIME.load(Ordering::SeqCst), last_input_time())) {
++                unsafe { SetForegroundWindow(target); }
++            }
++            log::info!("[Tab send handoff] source={} target={} foreground={}",
++                std::process::id(), group.active_pid.unwrap_or_default(), foreground);
++            Ok(())
++        })();
++        if presented.is_err() {
++            let pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?.take();
++            if let Some(pending) = pending {
++                update(|group| { group.restore_send_handoff(std::process::id(), &pending); Ok(()) })?;
++            }
++        }
++        presented?;
++    }
++    Ok(())
++}
++
++/// Restore a failed send without taking over a peer the user has since edited
++/// or selected. Returning true means tab presentation has been handled here.
++#[tauri::command]
++pub fn restore_popup_tab(app: AppHandle) -> Result<bool, String> {
++    if !REGISTERED.load(Ordering::SeqCst) { return Ok(false); }
++    let pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?.take();
++    let Some(pending) = pending else { return Ok(false) };
++    let mut restored = false;
++    update(|group| {
++        if pending.input_time.is_some() && pending.input_time == last_input_time() {
++            restored = group.restore_send_handoff(std::process::id(), &pending);
++        }
++        Ok(())
++    })?;
++    if restored {
++        let window = app.get_webview_window("main").ok_or("窗口不存在")?;
++        #[cfg(target_os = "windows")]
++        let focus = unsafe {
++            use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
++            let foreground = GetForegroundWindow();
++            window.hwnd().is_ok_and(|hwnd| hwnd.0 == foreground)
++                || tab_window(pending.target_pid) == Some(foreground)
++        };
++        #[cfg(not(target_os = "windows"))]
++        let focus = false;
++        show(&window, focus)?;
++    }
++    Ok(true)
+ }
+ 
+ /// Called only after the real send ACK, before optional cloud cleanup or exit.
+@@ -273,6 +407,8 @@
+         }
+         Ok(())
+     })?;
++    let mut pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?;
++    if pending.as_ref().is_some_and(|handoff| handoff.request_id == request_id) { *pending = None; }
+     Ok(())
+ }
+ 
+@@ -516,4 +652,48 @@
+         assert!(handoff_ready(Some(3), true));
+         assert!(handoff_ready(None, false));
+     }
+-}
++
++    #[test]
++    fn send_handoff_keeps_request_until_ack_and_does_not_skip_successor() {
++        let mut g = group();
++        g.select(2).unwrap();
++        let next = g.send_successor(2).unwrap();
++        assert_eq!(next, 3);
++        g.select(next).unwrap();
++        assert_eq!(g.tabs.len(), 3); // Still pending, not an acknowledged completion.
++        assert_eq!(g.tabs[1].request_id, "req-2");
++        assert!(!g.complete(2, "req-2").unwrap());
++        assert_eq!(g.active_pid, Some(3));
++        assert_eq!(g.send_successor(3), Some(1));
++        assert_eq!(g.tabs.len(), 2);
++        assert_eq!(g.send_successor(1), None); // Background sends never take over.
++    }
++
++    #[test]
++    fn failed_handoff_restores_only_original_request_and_unchanged_selection() {
++        let mut g = group();
++        let pending = SendHandoff { request_id: "req-1".into(), target_pid: 2, input_time: Some(123) };
++        g.select(2).unwrap();
++        assert!(g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(1));
++        assert_eq!(g.focus_pid, None);
++        assert_eq!(g.tabs.len(), 3);
++        g.select(3).unwrap();
++        assert!(!g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(3));
++        g.select(2).unwrap();
++        g.tabs[0].request_id = "new-request".into();
++        assert!(!g.restore_send_handoff(1, &pending));
++        assert_eq!(g.active_pid, Some(2));
++    }
++
++    #[test]
++    fn separate_windows_and_single_tab_do_not_prepare_peer_handoff() {
++        let mut g = group();
++        g.mode = PopupDisplayMode::Windows;
++        assert_eq!(g.send_successor(1), None);
++        g.mode = PopupDisplayMode::Tabs;
++        g.tabs.truncate(1);
++        assert_eq!(g.send_successor(1), None);
++    }
++}
+--- frozen/before/src/rust/ui/commands.rs
++++ frozen/after/src/rust/ui/commands.rs
+@@ -82,10 +82,16 @@
+     let window = app
+         .get_webview_window("main")
+         .ok_or_else(|| "standalone MCP window not found".to_string())?;
+-    crate::ui::popup_tabs::remember_send_focus(&window);
++    crate::ui::popup_tabs::prepare_send_handoff(&window)?;
+     window
+         .hide()
+         .map_err(|error| format!("failed to hide standalone MCP window: {error}"))?;
++
++    #[cfg(target_os = "windows")]
++    unsafe {
++        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
++        ShowWindow(window.hwnd().map_err(|e| e.to_string())?.0, SW_HIDE);
++    }
+ 
+     #[cfg(target_os = "macos")]
+     if let Err(error) = restore_standalone_previous_frontmost_application() {
+--- frozen/before/src/rust/app/builder.rs
++++ frozen/after/src/rust/app/builder.rs
+@@ -644,6 +644,7 @@
+             crate::ui::popup_tabs::get_popup_tabs,
+             crate::ui::popup_tabs::select_popup_tab,
+             crate::ui::popup_tabs::complete_popup_tab,
++            crate::ui::popup_tabs::restore_popup_tab,
+             set_window_config,
+             get_reply_config,
+             set_reply_config,
+--- frozen/before/src/frontend/composables/useMcpHandler.ts
++++ frozen/after/src/frontend/composables/useMcpHandler.ts
+@@ -385,6 +385,8 @@
+ 
+     if (dismissal.hidStandaloneWindow) {
+       try {
++        if (await invoke<boolean>('restore_popup_tab'))
++          return
+         if (await shouldFocusPopupOnShow()) {
+           const window = getCurrentWindow()
+           await window.show()

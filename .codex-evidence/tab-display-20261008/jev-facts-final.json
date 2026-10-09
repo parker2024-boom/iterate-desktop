@@ -1,0 +1,57 @@
+{
+  "tool": "jev_verify",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "auto_accept": 0.8,
+  "summary": {
+    "verified": 2,
+    "contradicted": 1,
+    "unsupported": 0,
+    "needs_review": 2
+  },
+  "results": [
+    {
+      "id": "claim0",
+      "claim": "最终只读核对：最初20条失效请求中，云端仍active的数量为0；当时云端剩1条MCP请求ID与发起端fresh lease的有效请求ID一致。",
+      "verdict": "contradicted",
+      "probabilities": {
+        "supports": 0.33,
+        "says_nothing": 0,
+        "contradicts": 0.67
+      },
+      "confidence": 0.51,
+      "action": "review",
+      "supporting_evidence": null
+    },
+    {
+      "id": "claim1",
+      "claim": "本机iterate.exe、managed Bridge和G盘最终候选的SHA256都为09D64356985B2956CBB32DD1C435057BF5DED3711CDF526B07840310EBF00F1F。",
+      "verdict": "verified",
+      "probabilities": {
+        "supports": 0.63,
+        "says_nothing": 0.01,
+        "contradicts": 0.36
+      },
+      "confidence": 0.45,
+      "action": "review",
+      "supporting_evidence": null
+    },
+    {
+      "id": "claim2",
+      "claim": "Windows标签页UI候选在记录的真实操作验收中7个步骤均Pass。",
+      "verdict": "verified",
+      "probabilities": {
+        "supports": 1,
+        "says_nothing": 0,
+        "contradicts": 0
+      },
+      "confidence": 1,
+      "action": "auto",
+      "supporting_evidence": null
+    }
+  ],
+  "usage": {
+    "input_tokens": 1947,
+    "output_tokens": 134
+  }
+}

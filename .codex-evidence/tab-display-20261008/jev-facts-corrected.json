@@ -1,0 +1,57 @@
+{
+  "tool": "jev_verify",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "auto_accept": 0.8,
+  "summary": {
+    "verified": 3,
+    "contradicted": 0,
+    "unsupported": 0,
+    "needs_review": 0
+  },
+  "results": [
+    {
+      "id": "claim0",
+      "claim": "final-cloud-source.json记录original_invalid_count=20且original_invalid_remaining=0。",
+      "verdict": "verified",
+      "probabilities": {
+        "contradicts": 0,
+        "says_nothing": 0,
+        "supports": 1
+      },
+      "confidence": 1,
+      "action": "auto",
+      "supporting_evidence": "exact_json"
+    },
+    {
+      "id": "claim1",
+      "claim": "同一记录current_cloud_active_count=1，cloud_source_mcp_equal=true，源与云端唯一MCP ID都是serve-1791461173664-8a724ed8-3578-4867-83f4-03edc73fbd7f。",
+      "verdict": "verified",
+      "probabilities": {
+        "contradicts": 0,
+        "says_nothing": 0,
+        "supports": 1
+      },
+      "confidence": 1,
+      "action": "auto",
+      "supporting_evidence": "exact_json"
+    },
+    {
+      "id": "claim2",
+      "claim": "final-runtime.json中artifact_sha256、gui_sha256、bridge_sha256三个字段相同。",
+      "verdict": "verified",
+      "probabilities": {
+        "contradicts": 0,
+        "says_nothing": 0,
+        "supports": 1
+      },
+      "confidence": 1,
+      "action": "auto",
+      "supporting_evidence": "exact_json"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1889,
+    "output_tokens": 258
+  }
+}

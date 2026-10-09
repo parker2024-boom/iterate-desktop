@@ -1,0 +1,109 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_below_auto_accept"
+  ],
+  "review": {
+    "safe_to_apply": 0.61,
+    "scores": {
+      "correctness": {
+        "score": 1.88,
+        "confidence": 0.8
+      },
+      "spec_match": {
+        "score": 1.9,
+        "confidence": 0.83
+      },
+      "test_gap": {
+        "score": 0.64,
+        "confidence": 0.3
+      },
+      "blast_radius": {
+        "score": 1.49,
+        "confidence": 0.23
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.80125
+  },
+  "verification": {
+    "action": "review",
+    "summary": {
+      "verified": 4,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 1,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "新安装的Mac源码会将真实conversation_title保留在发往手机的cross_device_mirror_state.request字段中，且镜像路由和回复身份保持不变。",
+        "verdict": "verified",
+        "confidence": 0.97,
+        "probabilities": {
+          "verified": 0.98,
+          "contradicted": 0.01,
+          "unsupported": 0.01
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "Mac更新已签名安装，专用Hub source已重启并保留50条既有不可变绑定；已有旧请求不被迁移。",
+        "verdict": "verified",
+        "confidence": 0.89,
+        "probabilities": {
+          "verified": 0.93,
+          "contradicted": 0.02,
+          "unsupported": 0.05
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "新的Mac手机标题请求由用户在Android端确认显示正确，用户同时确认Mac两条请求位于同一窗口不同tab。Mac没有为此改分组代码。",
+        "verdict": "verified",
+        "confidence": 0.73,
+        "probabilities": {
+          "verified": 0.82,
+          "contradicted": 0.03,
+          "unsupported": 0.15
+        },
+        "action": "review"
+      },
+      {
+        "claim": "本轮1项Rust发布字段回归测试和8项Android MirrorRelayTest全部通过。",
+        "verdict": "verified",
+        "confidence": 0.88,
+        "probabilities": {
+          "verified": 0.92,
+          "contradicted": 0.02,
+          "unsupported": 0.06
+        },
+        "action": "auto"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 10175,
+    "output_tokens": 238
+  }
+}

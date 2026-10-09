@@ -1,0 +1,66 @@
+{
+    "status":  "installed-user-accepted-review-unresolved",
+    "root_cause":  "Mac public mirror_wire omitted request.conversation_title; Android already supported that field.",
+    "fix":  "Forward conversation_title in new Mac phone publications; preserve existing immutable bindings and reply identities.",
+    "installed_mac_sha256":  "69a694242b59b63277c1fd6364f53a24e92492322c563dc9971ae0cdeffc3522",
+    "hub_source_pid":  85759,
+    "user_acceptance":  "Actual call_zhi Android response: 手机标题正确，Mac Tab 正确; continue=true",
+    "mac_tabs":  "Existing config and global runtime mode tabs; two owned requests registered in same group; user confirmed; final unlocked CoreGraphics snapshot one visible group popup.",
+    "tests":  "1 Rust wire contract test + 8 Android MirrorRelayTest passed. Previous 6 credential + 2 title tests passed.",
+    "desktop_build_outputs":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile",
+    "desktop_build_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+    "android_test_outputs":  "G:/DevLocal/BuildTemp/iterate-android/mac-title-20261009/gradle-build",
+    "android_project_cache":  "G:/DevLocal/BuildTemp/iterate-android/mac-title-20261009/project-cache",
+    "android_gradle_user_cache":  "G:/DevLocal/Gradle",
+    "mac_signing_staging":  "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-title-20261009/mobile",
+    "mac_backup":  "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-title-20261009/mobile/installed-before-title-fix.app",
+    "existing_binding_preserved":  50,
+    "limitation":  "Already-published older cards retain original content until source closes; no route migration was performed.",
+    "jev":  {
+                "action":  "escalate",
+                "review":  {
+                               "safe_to_apply":  0.6,
+                               "scores":  {
+                                              "correctness":  {
+                                                                  "score":  1.92,
+                                                                  "confidence":  0.9
+                                                              },
+                                              "spec_match":  {
+                                                                 "score":  1.93,
+                                                                 "confidence":  0.91
+                                                             },
+                                              "test_gap":  {
+                                                               "score":  0.59,
+                                                               "confidence":  0.27
+                                                           },
+                                              "blast_radius":  {
+                                                                   "score":  1.47,
+                                                                   "confidence":  0.19
+                                                               }
+                                          },
+                               "weights":  {
+                                               "correctness":  0.4,
+                                               "spec_match":  0.3,
+                                               "test_gap":  0.15,
+                                               "blast_radius":  0.15
+                                           },
+                               "thresholds":  {
+                                                  "auto_accept":  0.8,
+                                                  "review_at":  0.5,
+                                                  "composite_floor":  0.7
+                                              },
+                               "action":  "escalate",
+                               "composite":  0.819
+                           },
+                "reason_codes":  [
+                                     "review_escalated",
+                                     "claim_confidence_low",
+                                     "claim_confidence_below_auto_accept"
+                                 ],
+                "supplements":  1,
+                "unresolved":  "Generic test coverage/blast radius confidence remains below threshold, no concrete defect reported. Native user acceptance and functional evidence preserved separately. Earlier credential/title patch review remains unresolved after its two supplements."
+            },
+    "evidence":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-title-20261009/mobile",
+    "test_cleanup":  "Owned Mac GUI processes/tabs removed; owned Windows mirror processes gone (two stale registry records ignored); runtime input requests archived inside evidence run then removed.",
+    "cross_compiler_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/cross"
+}

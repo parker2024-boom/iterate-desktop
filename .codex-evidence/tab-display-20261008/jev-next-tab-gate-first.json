@@ -1,0 +1,12 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"tool\": \"jev_gate\",\n  \"model\": \"jev-latest\",\n  \"provider\": \"typesafe\",\n  \"truncated\": false,\n  \"action\": \"escalate\",\n  \"reason_codes\": [\n    \"review_escalated\"\n  ],\n  \"review\": {\n    \"safe_to_apply\": 0.48,\n    \"scores\": {\n      \"correctness\": {\n        \"score\": 1.96,\n        \"confidence\": 0.94\n      },\n      \"spec_match\": {\n        \"score\": 1.94,\n        \"confidence\": 0.91\n      },\n      \"test_gap\": {\n        \"score\": 0.3,\n        \"confidence\": 0.55\n      },\n      \"blast_radius\": {\n        \"score\": 1.9,\n        \"confidence\": 0.84\n      }\n    },\n    \"weights\": {\n      \"correctness\": 0.4,\n      \"spec_match\": 0.3,\n      \"test_gap\": 0.15,\n      \"blast_radius\": 0.15\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5,\n      \"composite_floor\": 0.7\n    },\n    \"action\": \"escalate\",\n    \"composite\": 0.8180000000000001\n  },\n  \"verification\": {\n    \"action\": \"auto\",\n    \"summary\": {\n      \"verified\": 2,\n      \"contradicted\": 0,\n      \"unsupported\": 0,\n      \"needs_review\": 0,\n      \"invalid_response\": 0\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5\n    },\n    \"results\": [\n      {\n        \"claim\": \"实际Windows release窗口中，中间标签发送成功后进入右侧标签并获得前台，末尾发送后循环到第一个。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 0.95,\n        \"probabilities\": {\n          \"verified\": 0.97,\n          \"contradicted\": 0,\n          \"unsupported\": 0.03\n        },\n        \"action\": \"auto\"\n      },\n      {\n        \"claim\": \"实际窗口的相邻Tab有独立边框和间距，并保留Tab在标题上方与原窗口大小。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 0.94,\n        \"probabilities\": {\n          \"verified\": 0.96,\n          \"contradicted\": 0.01,\n          \"unsupported\": 0.03\n        },\n        \"action\": \"auto\"\n      }\n    ]\n  },\n  \"usage\": {\n    \"input_tokens\": 12463,\n    \"output_tokens\": 158\n  }\n}"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 3
+}

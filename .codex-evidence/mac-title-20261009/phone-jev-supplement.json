@@ -1,0 +1,143 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_low",
+    "claim_confidence_below_auto_accept"
+  ],
+  "review": {
+    "safe_to_apply": 0.6,
+    "scores": {
+      "correctness": {
+        "score": 1.92,
+        "confidence": 0.9
+      },
+      "spec_match": {
+        "score": 1.93,
+        "confidence": 0.91
+      },
+      "test_gap": {
+        "score": 0.59,
+        "confidence": 0.27
+      },
+      "blast_radius": {
+        "score": 1.47,
+        "confidence": 0.19
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.819
+  },
+  "verification": {
+    "action": "escalate",
+    "summary": {
+      "verified": 7,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 4,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "新Mac手机发布数据保留request.conversation_title的原始值，回归测试验证Unicode标题和缺省null。",
+        "verdict": "verified",
+        "confidence": 0.41,
+        "probabilities": {
+          "verified": 0.61,
+          "contradicted": 0.1,
+          "unsupported": 0.29
+        },
+        "action": "escalate"
+      },
+      {
+        "claim": "本轮生产代码只向镜像request允许字段加入conversation_title；mirror_id/request_id/回复身份生成规则未改。",
+        "verdict": "verified",
+        "confidence": 0.38,
+        "probabilities": {
+          "verified": 0.59,
+          "contradicted": 0.12,
+          "unsupported": 0.29
+        },
+        "action": "escalate"
+      },
+      {
+        "claim": "Mac更新已签名安装，专用Hub source重启到新PID85759。",
+        "verdict": "verified",
+        "confidence": 0.92,
+        "probabilities": {
+          "verified": 0.95,
+          "contradicted": 0.02,
+          "unsupported": 0.03
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "重启前后50条既有Hub绑定内容哈希保持一致，已有请求没有迁移。",
+        "verdict": "verified",
+        "confidence": 0.69,
+        "probabilities": {
+          "verified": 0.79,
+          "contradicted": 0.04,
+          "unsupported": 0.17
+        },
+        "action": "review"
+      },
+      {
+        "claim": "用户通过Android返回的真实call_zhi结果确认新Mac手机请求标题正确。",
+        "verdict": "verified",
+        "confidence": 0.95,
+        "probabilities": {
+          "verified": 0.97,
+          "contradicted": 0.01,
+          "unsupported": 0.02
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "用户确认Mac请求位于同一窗口不同tab；测试结束时Mac已解锁，CoreGraphics观察到该组只有一个可见弹窗。",
+        "verdict": "verified",
+        "confidence": 0.55,
+        "probabilities": {
+          "verified": 0.7,
+          "contradicted": 0.19,
+          "unsupported": 0.11
+        },
+        "action": "review"
+      },
+      {
+        "claim": "本轮1项Rust发布字段测试和8项Android MirrorRelayTest均通过。",
+        "verdict": "verified",
+        "confidence": 0.94,
+        "probabilities": {
+          "verified": 0.96,
+          "contradicted": 0.01,
+          "unsupported": 0.03
+        },
+        "action": "auto"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 11085,
+    "output_tokens": 358
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "result": "Pass",
+  "artifact": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\public-desktop-20261009\\iterate-close-tabs.exe",
+  "sha256": "883A0CB42CB1AD8172295CBC6AD0978D9635973EA9CABD67774D885B093C6538",
+  "root": "G:/DevLocal/BuildTemp/iterate-desktop/public-desktop-20261009/actual-145522",
+  "steps": [
+    {
+      "result": "Pass",
+      "step": "paired-public-relay-with-unreachable-device-IPs"
+    },
+    {
+      "source_pid": 32636,
+      "step": "actual-source-window-arrives-at-paired-desktop-through-Hub",
+      "result": "Pass",
+      "mirror_pid": 26088
+    },
+    {
+      "result": "Pass",
+      "step": "server-connection-indicator-is-read-only"
+    },
+    {
+      "result": "Pass",
+      "step": "actual-settings-show-public-server-without-device-address-controls"
+    },
+    {
+      "result": "Pass",
+      "step": "peer-offline-does-not-report-server-disconnected"
+    },
+    {
+      "result": "Pass",
+      "step": "failed-send-retains-same-rendered-tab-and-draft"
+    },
+    {
+      "step": "peer-reconnect-preserves-existing-editor",
+      "result": "Pass",
+      "mirror_pid": 26088
+    },
+    {
+      "result": "Pass",
+      "step": "actual-server-outage-and-reconnect-update-indicator"
+    },
+    {
+      "result": "Pass",
+      "step": "actual-UI-send-invoked-with-verified-draft-and-foreground"
+    },
+    {
+      "result": "Pass",
+      "step": "actual-mirror-send-reaches-original-source-and-retires-window"
+    }
+  ],
+  "limit": "Two real Windows processes emulate desktop roles;actual Mac acceptance is separate."
+}

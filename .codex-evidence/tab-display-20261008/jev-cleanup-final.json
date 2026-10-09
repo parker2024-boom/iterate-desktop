@@ -1,0 +1,87 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_low"
+  ],
+  "review": {
+    "safe_to_apply": 0.43,
+    "scores": {
+      "correctness": {
+        "score": 1.63,
+        "confidence": 0.44
+      },
+      "spec_match": {
+        "score": 1.5,
+        "confidence": 0.25
+      },
+      "test_gap": {
+        "score": 0.71,
+        "confidence": 0.28
+      },
+      "blast_radius": {
+        "score": 1.75,
+        "confidence": 0.64
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.6665
+  },
+  "verification": {
+    "action": "escalate",
+    "summary": {
+      "verified": 2,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 2,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "关闭确认缓存只在/source/close返回成功HTTP且JSON可解析后写入，绑定endpoint/source/原请求ID/key/version；失败仍重试，另一version不复用确认。",
+        "verdict": "verified",
+        "confidence": 0.27,
+        "probabilities": {
+          "unsupported": 0.42,
+          "verified": 0.51,
+          "contradicted": 0.07
+        },
+        "action": "escalate"
+      },
+      {
+        "claim": "回归测试中第一批未知注册、400、503不阻止completed关闭；第二批不重复completed关闭，但400和503仍重试，live始终未关闭。",
+        "verdict": "verified",
+        "confidence": 0.46,
+        "probabilities": {
+          "unsupported": 0.29,
+          "verified": 0.64,
+          "contradicted": 0.07
+        },
+        "action": "escalate"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 8987,
+    "output_tokens": 158
+  }
+}

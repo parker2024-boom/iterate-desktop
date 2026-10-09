@@ -1,0 +1,2815 @@
+diff --git a/scripts/desktop-speech-frontend-ownership.test.mjs b/scripts/desktop-speech-frontend-ownership.test.mjs
+index d137682..ca71c12 100644
+--- a/scripts/desktop-speech-frontend-ownership.test.mjs
++++ b/scripts/desktop-speech-frontend-ownership.test.mjs
+@@ -1,9 +1,37 @@
+ import assert from 'node:assert/strict'
+ import { readFile } from 'node:fs/promises'
+ import { test } from 'node:test'
++import { stripTypeScriptTypes } from 'node:module'
++import { runInNewContext } from 'node:vm'
+ 
+ const root = new URL('../', import.meta.url)
+ 
++test('starting and restarting a speech host never requests system permissions', async () => {
++  const source = await readFile(new URL('src/frontend/composables/useGlobalSpeechRuntimeHost.ts', root), 'utf8')
++  const script = stripTypeScriptTypes(source.replace(/\r\n/g, '\n'))
++    .replace(/^import .*\n/gm, '')
++    .replace('export function useGlobalSpeechRuntimeHost', 'function useGlobalSpeechRuntimeHost')
++  const commands = []
++  const host = runInNewContext(`${script}\nuseGlobalSpeechRuntimeHost()`, {
++    invoke: async (command) => {
++      commands.push(command)
++      if (command.endsWith('_status')) return false
++      if (command === 'get_speech_control_snapshot') return { phase: 'Idle' }
++      return []
++    },
++    listen: async () => () => {},
++    GlobalSpeechSessionGuard: class { applySnapshot() { return false } },
++    buildSpeechContextualStrings: () => [],
++  })
++  await host.initialize()
++  host.dispose()
++  await host.initialize()
++  await new Promise(resolve => setImmediate(resolve))
++  assert.equal(commands.filter(command => command === 'get_speech_control_snapshot').length, 2)
++  assert.deepEqual(commands.filter(command => command.startsWith('request_')), [])
++  host.dispose()
++})
++
+ test('overlay composable is a Rust snapshot projection without a second controller', async () => {
+   const source = await readFile(new URL('src/frontend/composables/useGlobalSpeechInput.ts', root), 'utf8')
+ 
+diff --git a/src/bin/mcp-server.rs b/src/bin/mcp-server.rs
+index 8cfcec9..6bed4ce 100644
+--- a/src/bin/mcp-server.rs
++++ b/src/bin/mcp-server.rs
+@@ -120,25 +120,7 @@ fn normalize_conversation_title(title: Option<&str>) -> Option<String> {
+ }
+ 
+ fn codex_thread_title_from_session_index(codex_home: &Path, thread_id: &str) -> Option<String> {
+-    let file = std::fs::File::open(codex_home.join("session_index.jsonl")).ok()?;
+-    let mut matched_title = None;
+-
+-    for line in BufReader::new(file).lines().map_while(Result::ok) {
+-        let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) else {
+-            continue;
+-        };
+-        if entry.get("id").and_then(|value| value.as_str()) != Some(thread_id) {
+-            continue;
+-        }
+-
+-        if let Some(title) =
+-            normalize_conversation_title(entry.get("thread_name").and_then(|value| value.as_str()))
+-        {
+-            matched_title = Some(title);
+-        }
+-    }
+-
+-    matched_title
++    cunzhi::mcp::conversation_title::session_title(codex_home, thread_id)
+ }
+ 
+ fn codex_thread_title(thread_id: &str) -> Option<String> {
+@@ -1757,8 +1739,8 @@ async fn call_zhi(
+         .as_deref()
+         .and_then(normalize_codex_thread_deeplink)
+         .or_else(|| codex_thread_id.as_deref().and_then(codex_thread_deeplink));
+-    let conversation_title = normalize_conversation_title(args.conversation_title.as_deref())
+-        .or_else(|| codex_thread_id.as_deref().and_then(codex_thread_title));
++    let conversation_title = codex_thread_id.as_deref().and_then(codex_thread_title)
++        .or_else(|| normalize_conversation_title(args.conversation_title.as_deref()));
+     checkpoint::touch_auto_checkpoint_monitor(&args.project_path, Some(&request_id));
+     let workspace_checkpoint =
+         checkpoint::maybe_auto_checkpoint(&args.project_path, Some(&request_id));
+@@ -2666,7 +2648,7 @@ impl ServerHandler for IterateZhiServer {
+                 },
+                 "conversation_title": {
+                     "type": "string",
+-                    "description": "当前对话标题（可选；Codex 会话未传时会自动提取）"
++                    "description": "无法读取真实会话名称时使用的备用标题（可选；Codex 真实会话名称优先，不应填写每轮进度）"
+                 }
+             },
+             "required": ["message", "project_path"]
+diff --git a/src/frontend/components/AppContent.vue b/src/frontend/components/AppContent.vue
+index 61a23af..35e8aa9 100644
+--- a/src/frontend/components/AppContent.vue
++++ b/src/frontend/components/AppContent.vue
+@@ -17,9 +17,7 @@ import {
+   toggleDesktopCodexLive,
+   toggleDesktopCodexLiveMicrophone,
+ } from '../services/desktopCodexLiveControl'
+-import { stripAutoPrompt } from '../utils/textUtils'
+ import UpdateModal from './common/UpdateModal.vue'
+-import TimelineView from './conversation/TimelineView.vue'
+ import LayoutWrapper from './layout/LayoutWrapper.vue'
+ import HtmlArtifactRenderer from './popup/HtmlArtifactRenderer.vue'
+ import McpPopup from './popup/McpPopup.vue'
+@@ -132,6 +130,31 @@ interface McpPopupRef {
+ 
+ const props = defineProps<Props>()
+ const emit = defineEmits<Emits>()
++
++// Keep the last request's owner through null so native teardown cannot clear Bridge.
++// A real MCP request restores normal state pushes, including its subsequent close.
++let bridgeNativeOwner = props.mcpRequest?.source === 'codex_native'
++let bridgeStateRevision = 0
++watch(() => [props.mcpRequest, props.mcpRequest?.source, props.showMcpPopup] as const, ([request]) => {
++  if (request)
++    bridgeNativeOwner = request.source === 'codex_native'
++  bridgeStateRevision++
++}, { flush: 'sync' })
++
++function canSyncBridgeState() {
++  return !bridgeNativeOwner && props.mcpRequest?.source !== 'codex_native'
++}
++
++interface NativeHistorySession {
++  routeId: string
++  treeId: string
++  currentNodeId: string
++  projectPath: string
++  launchId: string
++  threadId: string
++  title: string
++  updatedAt: string
++}
+ const message = useMessage()
+ 
+ // 版本检查相关
+@@ -143,12 +166,41 @@ const showPopupSettings = ref(false)
+ const showIteratePairingModal = ref(false)
+ 
+ // 对话时间线状态
+-const showTimelineDrawer = ref(false)
++const boundNativeHistory = ref<NativeHistorySession | null>(null)
+ const conversationTreeId = ref<string | null>(null)
+ const currentConversationNodeId = ref<string | null>(null)
+ const activeConversationRouteKey = ref<string | null>(null)
++const popupTimelineTreeId = computed(() => boundNativeHistory.value?.treeId || conversationTreeId.value)
++const popupTimelineNodeId = computed(() => boundNativeHistory.value?.currentNodeId || currentConversationNodeId.value)
++let nativeHistoryPollTimer: number | null = null
+ const mcpPopupRef = ref<McpPopupRef | null>(null)
+ let popupSettingsDraft: TimelinePrefillPayload | null = null
++
++async function refreshNativeHistoryBinding() {
++  const request = props.mcpRequest
++  const thread = request?.codex_thread_id?.trim()
++  const project = normalizeProjectPath(request)
++  const native = request?.source === 'codex_native'
++  const trustedOrdinary = request?.codex_thread_provenance === 'caller_meta'
++  if (!request || !thread || !project || (!native && !trustedOrdinary)) {
++    boundNativeHistory.value = null
++    return
++  }
++  try {
++    const sessions = await invoke<NativeHistorySession[]>('list_native_conversation_histories')
++    if (props.mcpRequest?.id !== request.id || props.mcpRequest?.codex_thread_id !== request.codex_thread_id)
++      return
++    const matches = sessions.filter(session => session.threadId === thread
++      && (!native || (session.projectPath === project && session.routeId === normalizeConversationRouteId(request))))
++    // A thread must identify exactly one monitored launch; never choose by cwd or recency.
++    boundNativeHistory.value = matches.length === 1 ? matches[0] : null
++  }
++  catch (error) {
++    console.warn('读取当前 CLI 历史失败:', error)
++    boundNativeHistory.value = null
++  }
++}
++
+ const activeArtifact = ref<PopupArtifact | null>(null)
+ const activeArtifactContent = computed(() => activeArtifact.value?.content || '')
+ let skipNextBridgePush = false
+@@ -773,13 +825,21 @@ async function ensureConversationAssistantNode(treeId: string, request: any, rou
+ async function syncConversationRequestNode(request: any) {
+   if (!request) {
+     console.info('[Timeline] mcpRequest 为空，重置时间线状态')
+-    showTimelineDrawer.value = false
++    boundNativeHistory.value = null
+     conversationTreeId.value = null
+     currentConversationNodeId.value = null
+     activeConversationRouteKey.value = null
+     return
+   }
+ 
++  if (request.source === 'codex_native') {
++    conversationTreeId.value = null
++    currentConversationNodeId.value = null
++    activeConversationRouteKey.value = null
++    await refreshNativeHistoryBinding()
++    return
++  }
++
+   const explicitConversationRouteId = normalizeConversationRouteId(request)
+   const routeKey = await resolveConversationRouteKeyWithFallback(request)
+   console.info('[Timeline] 开始同步请求节点', {
+@@ -841,36 +901,6 @@ async function syncConversationRequestNode(request: any) {
+   }
+ }
+ 
+-async function handleTimelineNodeSwitch(nodeId: string) {
+-  if (!conversationTreeId.value)
+-    return
+-
+-  try {
+-    skipNextBridgePush = true
+-    const node = await invoke<TimelineNodeSwitchResult>('switch_conversation_node', {
+-      treeId: conversationTreeId.value,
+-      nodeId,
+-    })
+-    currentConversationNodeId.value = node?.id ?? nodeId
+-
+-    const rawContent = typeof node?.content === 'string' ? node.content : ''
+-    const prefillContent = stripAutoPrompt(rawContent)
+-    mcpPopupRef.value?.applyTimelinePrefill({
+-      userInput: prefillContent,
+-      selectedOptions: [],
+-      draggedImages: [],
+-      attachedFiles: [],
+-      focus: true,
+-    })
+-
+-    message.success('已切换到历史节点')
+-  }
+-  catch (error) {
+-    console.error('[Timeline] 切换节点失败:', error)
+-    message.error('切换历史节点失败')
+-  }
+-}
+-
+ function handleCloseArtifact() {
+   activeArtifact.value = null
+ }
+@@ -960,6 +990,8 @@ let visibilityHandler: (() => void) | null = null
+ let unlistenConversationNodeRecorded: (() => void) | null = null
+ 
+ async function pullCachedBridgeAction(reason: string) {
++  if (props.mcpRequest?.source === 'codex_native')
++    return
+   const projectPath = props.mcpRequest?.project_path
+   if (!projectPath || actionPollInFlight)
+     return
+@@ -978,7 +1010,7 @@ async function pullCachedBridgeAction(reason: string) {
+       return
+     const data = await res.json()
+     const action = data?.action
+-    if (action && isBridgeActionForWindow(action, props.mcpRequest)) {
++    if (props.mcpRequest?.source !== 'codex_native' && action && isBridgeActionForWindow(action, props.mcpRequest)) {
+       if (!handleWindowConditionalAction(action))
+         emit('bridgeAction', action)
+     }
+@@ -1052,6 +1084,7 @@ watch(() => props.mcpRequest, async (newRequest) => {
+   }
+ 
+   await syncConversationRequestNode(newRequest)
++  await refreshNativeHistoryBinding()
+ 
+   const nextProjectPath = resolveDisplayProjectPath(newRequest)
+   if (nextProjectPath && nextProjectPath !== lastValidProjectPath.value) {
+@@ -1261,7 +1294,7 @@ watch(() => props.showMcpPopup, async (newValue) => {
+     void refreshUsageQuotaProviders()
+   }
+   else {
+-    showTimelineDrawer.value = false
++    boundNativeHistory.value = null
+     await unregisterShortcuts()
+   }
+ })
+@@ -1273,6 +1306,10 @@ onMounted(async () => {
+   // 设置退出警告监听器（统一处理主界面和弹窗）
+   setupExitWarningListener(message)
+   await initializeDesktopCodexLiveControl()
++  nativeHistoryPollTimer = window.setInterval(() => {
++    if (props.showMcpPopup && props.mcpRequest?.codex_thread_id)
++      void refreshNativeHistoryBinding()
++  }, 2000)
+ 
+   // 添加全局键盘事件监听器
+   document.addEventListener('keydown', handleGlobalKeydown)
+@@ -1340,6 +1377,9 @@ onMounted(async () => {
+     const { message_type, payload } = bridgeMsg
+ 
+     if (message_type === 'request_sync') {
++      if (!canSyncBridgeState())
++        return
++      const syncRevision = bridgeStateRevision
+       const currentRequestId = normalizeRequestId(props.mcpRequest)
+       const targetRequestId = normalizeRequestId(payload)
+       if (currentRequestId && targetRequestId && currentRequestId !== targetRequestId) {
+@@ -1385,6 +1425,8 @@ onMounted(async () => {
+         showPopup: props.showMcpPopup,
+       })
+       const liveGoal = await getLiveGoalForBridge()
++      if (!canSyncBridgeState() || syncRevision !== bridgeStateRevision)
++        return
+       invoke('send_to_web_bridge', {
+         message: {
+           message_type: 'mcp_state',
+@@ -1400,6 +1442,8 @@ onMounted(async () => {
+       })
+     }
+     else if (message_type === 'mcp_action') {
++      if (props.mcpRequest?.source === 'codex_native' || payload?.source === 'codex_native')
++        return
+       // 转发 Web 端的动作到本地处理逻辑
+       if (!isBridgeActionForWindow(payload, props.mcpRequest))
+         return
+@@ -1492,8 +1536,15 @@ onMounted(async () => {
+   let bridgePushTimeout: ReturnType<typeof setTimeout> | null = null
+   let bridgePushSequence = 0
+   function debouncedBridgePush() {
+-    const scheduledAt = Date.now()
+     const sequence = ++bridgePushSequence
++    if (!canSyncBridgeState()) {
++      if (bridgePushTimeout)
++        clearTimeout(bridgePushTimeout)
++      bridgePushTimeout = null
++      return
++    }
++    const scheduledAt = Date.now()
++    const scheduledRevision = bridgeStateRevision
+     const requestId = normalizeRequestId(props.mcpRequest)
+     const timelineRouteId = activeConversationRouteKey.value
+     const projectPath = normalizeProjectPath(props.mcpRequest)
+@@ -1510,6 +1561,8 @@ onMounted(async () => {
+       clearTimeout(bridgePushTimeout)
+     }
+     bridgePushTimeout = setTimeout(async () => {
++      if (!canSyncBridgeState() || scheduledRevision !== bridgeStateRevision || sequence !== bridgePushSequence)
++        return
+       const firedAt = Date.now()
+       reportBridgeTiming('fire_mcp_state_push', {
+         sequence,
+@@ -1560,6 +1613,8 @@ onMounted(async () => {
+         timelineNodeCount: timelineNodes.length,
+         elapsedSinceScheduleMs: invokeAt - scheduledAt,
+       })
++      if (!canSyncBridgeState() || scheduledRevision !== bridgeStateRevision || sequence !== bridgePushSequence)
++        return
+       invoke('send_to_web_bridge', {
+         message: {
+           message_type: 'mcp_state',
+@@ -1650,6 +1705,10 @@ onMounted(async () => {
+ })
+ 
+ onUnmounted(async () => {
++  if (nativeHistoryPollTimer !== null) {
++    window.clearInterval(nativeHistoryPollTimer)
++    nativeHistoryPollTimer = null
++  }
+   if (desktopCodexLivePollTimer !== null) {
+     window.clearInterval(desktopCodexLivePollTimer)
+     desktopCodexLivePollTimer = null
+@@ -1730,28 +1789,6 @@ onUnmounted(async () => {
+ 
+       <MobileConnectionWizard v-model:show="showIteratePairingModal" />
+ 
+-      <n-drawer
+-        v-model:show="showTimelineDrawer"
+-        placement="left"
+-        :width="360"
+-      >
+-        <n-drawer-content
+-          title="对话时间线"
+-          closable
+-          body-content-class="p-0 bg-black"
+-        >
+-          <TimelineView
+-            v-if="conversationTreeId && currentConversationNodeId"
+-            :tree-id="conversationTreeId"
+-            :current-node-id="currentConversationNodeId"
+-            @node-click="handleTimelineNodeSwitch"
+-          />
+-          <div v-else class="h-full flex items-center justify-center bg-black">
+-            <n-empty description="暂无对话节点" />
+-          </div>
+-        </n-drawer-content>
+-      </n-drawer>
+-
+       <!-- 设置界面 -->
+       <div
+         v-if="showPopupSettings"
+@@ -1785,15 +1822,14 @@ onUnmounted(async () => {
+           :context-prompt-state="currentPromptContextState"
+           :app-config="props.appConfig"
+           :is-muted="props.isMuted"
+-          :timeline-tree-id="conversationTreeId"
+-          :timeline-current-node-id="currentConversationNodeId"
++          :timeline-tree-id="popupTimelineTreeId"
++          :timeline-current-node-id="popupTimelineNodeId"
+           class="flex-1 flex flex-col overflow-hidden min-h-0"
+           @response="$emit('mcpResponse', $event)"
+           @cancel="$emit('mcpCancel')"
+           @theme-change="$emit('themeChange', $event)"
+           @toggle-mute="$emit('toggleMute')"
+           @open-artifact="handleOpenArtifact"
+-          @timeline-node-click="handleTimelineNodeSwitch"
+           @conditional-state-change="handlePopupConditionalStateChange"
+         />
+       </div>
+@@ -1970,25 +2006,26 @@ onUnmounted(async () => {
+     </div>
+ 
+     <!-- 主界面 - 只在非弹窗模式且非初始化时显示 -->
+-    <LayoutWrapper
+-      v-else
+-      :app-config="props.appConfig"
+-      :is-muted="props.isMuted"
+-      :codex-live-phase="globalCodexLivePhase"
+-      :codex-live-status="globalCodexLiveStatus"
+-      @theme-change="$emit('themeChange', $event)"
+-      @toggle-always-on-top="$emit('toggleAlwaysOnTop')"
+-      @toggle-mute="$emit('toggleMute')"
+-      @toggle-audio-notification="$emit('toggleAudioNotification')"
+-      @update-audio-url="$emit('updateAudioUrl', $event)"
+-      @test-audio="$emit('testAudio')"
+-      @stop-audio="$emit('stopAudio')"
+-      @test-audio-error="$emit('testAudioError', $event)"
+-      @update-window-size="$emit('updateWindowSize', $event)"
+-      @toggle-codex-live="handleToggleCodexLive"
+-      @toggle-codex-live-mute="handleToggleCodexLiveMute"
+-      @config-reloaded="$emit('configReloaded')"
+-    />
++    <div v-else class="relative min-h-screen">
++      <LayoutWrapper
++        :app-config="props.appConfig"
++        :is-muted="props.isMuted"
++        :codex-live-phase="globalCodexLivePhase"
++        :codex-live-status="globalCodexLiveStatus"
++        @theme-change="$emit('themeChange', $event)"
++        @toggle-always-on-top="$emit('toggleAlwaysOnTop')"
++        @toggle-mute="$emit('toggleMute')"
++        @toggle-audio-notification="$emit('toggleAudioNotification')"
++        @update-audio-url="$emit('updateAudioUrl', $event)"
++        @test-audio="$emit('testAudio')"
++        @stop-audio="$emit('stopAudio')"
++        @test-audio-error="$emit('testAudioError', $event)"
++        @update-window-size="$emit('updateWindowSize', $event)"
++        @toggle-codex-live="handleToggleCodexLive"
++        @toggle-codex-live-mute="handleToggleCodexLiveMute"
++        @config-reloaded="$emit('configReloaded')"
++      />
++    </div>
+ 
+     <!-- 更新弹窗 -->
+     <UpdateModal
+diff --git a/src/frontend/components/common/CrossDeviceSettings.vue b/src/frontend/components/common/CrossDeviceSettings.vue
+index 118a737..d03659d 100644
+--- a/src/frontend/components/common/CrossDeviceSettings.vue
++++ b/src/frontend/components/common/CrossDeviceSettings.vue
+@@ -172,7 +172,7 @@ onMounted(loadSettings)
+         同步对端已打开窗口
+       </n-button>
+       <p class="mt-2 text-xs opacity-75">
+-        断线或未连接期间打开的窗口，可在重新连接并开启两端跨设备开关后，点击上方按钮补同步一次。
++        断线或未连接期间打开的待回复窗口，会在重新连接并开启两端跨设备开关后自动同步。已在本端关闭的窗口，可点击上方按钮恢复。
+       </p>
+       <p v-if="syncError" role="alert" class="mt-2 text-red-500 whitespace-pre-wrap break-all">
+         {{ syncError }}
+diff --git a/src/frontend/components/conversation/TimelineDotBar.vue b/src/frontend/components/conversation/TimelineDotBar.vue
+index e13197e..9da8671 100644
+--- a/src/frontend/components/conversation/TimelineDotBar.vue
++++ b/src/frontend/components/conversation/TimelineDotBar.vue
+@@ -1,6 +1,6 @@
+ <script setup lang="ts">
+ import { invoke } from '@tauri-apps/api/core'
+-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
++import { computed, ref, watch } from 'vue'
+ import { selectionTextInsideElement } from '../../utils/popupSelectionQuote'
+ 
+ interface ConversationNode {
+@@ -31,7 +31,7 @@ const props = withDefaults(defineProps<{
+ })
+ 
+ const emit = defineEmits<{
+-  nodeClick: [nodeId: string]
++  nodeClick: [node: ConversationNode | null]
+   nodeQuote: [content: string]
+ }>()
+ 
+@@ -47,7 +47,7 @@ const nodeCount = computed(() => nodes.value.length)
+ 
+ function buildPreview(node: ConversationNode) {
+   const selectedOption = node.metadata?.selected_option?.trim()
+-  const normalized = (selectedOption || node.content).replace(/\s+/g, ' ').trim()
++  const normalized = (node.content.trim() || selectedOption || '').replace(/\s+/g, ' ').trim()
+   if (!normalized)
+     return '(空内容)'
+   if (normalized.length <= 40)
+@@ -102,15 +102,6 @@ function updateTooltipPosition(dot: HTMLElement) {
+   }
+ }
+ 
+-function updateTooltipCenterPosition() {
+-  tooltipStyle.value = {
+-    top: '50vh',
+-    left: '50%',
+-    right: 'auto',
+-    transform: 'translate(-50%, -50%)',
+-  }
+-}
+-
+ function handleDotHover(index: number, event: MouseEvent) {
+   hoveredIndex.value = index
+   if (pinnedNodeId.value)
+@@ -129,18 +120,18 @@ const pinnedIndex = computed(() => {
+   return idx >= 0 ? idx : null
+ })
+ 
+-const activeTooltipIndex = computed(() => pinnedIndex.value ?? hoveredIndex.value)
+-const isPinnedTooltip = computed(() => pinnedIndex.value !== null)
++const activeTooltipIndex = computed(() => hoveredIndex.value)
++const isPinnedTooltip = computed(() => false)
+ 
+ function buildTooltipContent(node: ConversationNode) {
+   const selectedOption = node.metadata?.selected_option?.trim()
+-  const content = selectedOption || node.content
++  const content = node.content.trim() ? node.content : selectedOption || ''
+   return isPinnedTooltip.value ? content : buildPreview(node)
+ }
+ 
+ function buildQuoteContent(node: ConversationNode) {
+   const selectedText = selectionTextInsideElement(tooltipContentRef.value)
+-  return (selectedText || node.metadata?.selected_option?.trim() || node.content).trim()
++  return (selectedText || node.content.trim() || node.metadata?.selected_option?.trim() || '').trim()
+ }
+ 
+ function clearTextSelection() {
+@@ -151,6 +142,7 @@ function clearTextSelection() {
+ 
+ function closePinnedTooltip() {
+   pinnedNodeId.value = null
++  emit('nodeClick', null)
+   clearTextSelection()
+ }
+ 
+@@ -168,41 +160,20 @@ function handleDotClick(index: number, nodeId: string) {
+   }
+   else {
+     pinnedNodeId.value = nodeId
+-    updateTooltipCenterPosition()
++    hoveredIndex.value = null
++    emit('nodeClick', nodes.value[index] ?? null)
+   }
+ }
+ 
+-function handleDocumentPointerDown(event: PointerEvent) {
+-  if (!pinnedNodeId.value)
+-    return
+-
+-  const target = event.target
+-  if (!(target instanceof Node))
+-    return
+-
+-  if (tooltipRef.value?.contains(target))
+-    return
+-  if (rootRef.value?.contains(target))
+-    return
+-
+-  closePinnedTooltip()
+-}
+-
+ watch(
+   () => [props.treeId, props.currentNodeId, props.mockNodes],
+   () => {
++    if (pinnedNodeId.value && !props.treeId && !props.mockNodes)
++      closePinnedTooltip()
+     loadPath()
+   },
+   { immediate: true },
+ )
+-
+-onMounted(() => {
+-  document.addEventListener('pointerdown', handleDocumentPointerDown, true)
+-})
+-
+-onUnmounted(() => {
+-  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+-})
+ </script>
+ 
+ <template>
+diff --git a/src/frontend/components/conversation/TimelineView.vue b/src/frontend/components/conversation/TimelineView.vue
+index f68d0ed..41e5e12 100644
+--- a/src/frontend/components/conversation/TimelineView.vue
++++ b/src/frontend/components/conversation/TimelineView.vue
+@@ -21,6 +21,7 @@ interface ConversationNode {
+ const props = defineProps<{
+   treeId: string
+   currentNodeId: string
++  readOnly?: boolean
+ }>()
+ 
+ const emit = defineEmits<{
+@@ -29,6 +30,8 @@ const emit = defineEmits<{
+ 
+ const nodes = ref<ConversationNode[]>([])
+ const loading = ref(false)
++const selectedReadOnlyNodeId = ref<string | null>(null)
++const selectedReadOnlyNode = computed(() => nodes.value.find(node => node.id === selectedReadOnlyNodeId.value))
+ 
+ const nodeCountText = computed(() => `共 ${nodes.value.length} 个节点`)
+ 
+@@ -55,7 +58,7 @@ function formatTime(timestamp: string) {
+ 
+ function buildPreview(node: ConversationNode) {
+   const selectedOption = node.metadata?.selected_option?.trim()
+-  const normalized = (selectedOption || node.content).replace(/\s+/g, ' ').trim()
++  const normalized = (node.content.trim() || selectedOption || '').replace(/\s+/g, ' ').trim()
+   if (!normalized)
+     return '(空内容)'
+   if (normalized.length <= 72)
+@@ -93,6 +96,7 @@ async function loadPath() {
+       nodeId: props.currentNodeId,
+     })
+     nodes.value = path
++    selectedReadOnlyNodeId.value = props.readOnly ? path.at(-1)?.id ?? null : null
+     console.info('[Timeline] 对话路径加载成功', {
+       treeId: props.treeId,
+       currentNodeId: props.currentNodeId,
+@@ -115,6 +119,14 @@ async function loadPath() {
+   }
+ }
+ 
++function handleNodeClick(nodeId: string) {
++  if (props.readOnly) {
++    selectedReadOnlyNodeId.value = nodeId
++    return
++  }
++  emit('nodeClick', nodeId)
++}
++
+ watch(
+   () => [props.treeId, props.currentNodeId],
+   () => {
+@@ -156,7 +168,7 @@ watch(
+           type="button"
+           class="timeline-node"
+           :class="{ 'timeline-node-current': item.id === props.currentNodeId }"
+-          @click="emit('nodeClick', item.id)"
++          @click="handleNodeClick(item.id)"
+         >
+           <div class="timeline-marker">
+             <div
+@@ -194,6 +206,9 @@ watch(
+         </button>
+       </template>
+     </n-virtual-list>
++    <div v-if="props.readOnly && selectedReadOnlyNode" class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words border-t border-white/10 p-3 text-sm text-gray-100">
++      {{ selectedReadOnlyNode.content || selectedReadOnlyNode.metadata?.selected_option || '(空内容)' }}
++    </div>
+   </div>
+ </template>
+ 
+diff --git a/src/frontend/components/popup/McpPopup.vue b/src/frontend/components/popup/McpPopup.vue
+index d8230e1..c5137a4 100644
+--- a/src/frontend/components/popup/McpPopup.vue
++++ b/src/frontend/components/popup/McpPopup.vue
+@@ -1,11 +1,14 @@
+ <script setup lang="ts">
++import type { DesktopMcpSubmission } from '../../composables/desktopMcpSubmission'
+ import type { McpRequest, PopupArtifact, PopupFileAttachment, PopupInputData, PopupTextSelection, ShortcutBinding } from '../../types/popup'
+ import { invoke } from '@tauri-apps/api/core'
+ import { listen } from '@tauri-apps/api/event'
+ import { getCurrentWindow } from '@tauri-apps/api/window'
+-import { useMessage } from 'naive-ui'
++import { NCheckboxGroup, useMessage } from 'naive-ui'
+ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+ 
++import { isDesktopSubmissionCurrent } from '../../composables/desktopMcpSubmission'
++import { mcpDeliveryStatus } from '../../composables/useMcpDelivery'
+ import { resolveMcpLaunchContext } from '../../composables/useMcpHandler'
+ import { useShortcuts } from '../../composables/useShortcuts'
+ import { copySubmissionToClipboard } from '../../utils/submissionClipboard'
+@@ -75,7 +78,6 @@ interface Emits {
+   stopAudio: []
+   testAudioError: [error: any]
+   updateWindowSize: [size: { width: number, height: number, fixed: boolean }]
+-  timelineNodeClick: [nodeId: string]
+   conditionalStateChange: [payload: { promptId: string, current_state?: boolean, is_active?: boolean }]
+   openArtifact: [artifact: PopupArtifact]
+ }
+@@ -88,7 +90,7 @@ interface TimelinePrefillPayload extends PopupInputData {
+ interface PopupInputRef {
+   statusText?: string
+   updateData: (data: PopupInputData) => void
+-  recordSubmittedInputForAutoPromotion: () => void
++  recordSubmittedInputForAutoPromotion: (input?: string) => void
+   handleQuoteMessage: (messageContent: string) => void
+   insertSelectedTextQuote: (selection: PopupTextSelection) => Promise<boolean>
+   focusInput?: () => void
+@@ -123,6 +125,14 @@ const contentRef = ref<PopupContentRef | null>(null)
+ const inputRef = ref<PopupInputRef | null>(null)
+ const pendingTimelinePrefill = ref<TimelinePrefillPayload | null>(null)
+ const timelineEdgeActive = ref(false)
++const viewedHistoryNode = ref<ConversationNode | null>(null)
++const viewedHistoryContentRef = ref<HTMLElement | null>(null)
++const timelineSelectionRevision = ref(0)
++
++function returnToCurrentQuestion() {
++  viewedHistoryNode.value = null
++  timelineSelectionRevision.value++
++}
+ const TIMELINE_EDGE_TRIGGER_PX = 16
+ const TIMELINE_EDGE_ACTIVE_PX = 42
+ 
+@@ -244,7 +254,14 @@ function resolveSubmitSource(userInput: string, options: string[] = []): 'popup'
+   return intent?.action === 'start' ? 'popup_goal_submit' : 'popup'
+ }
+ 
+-async function applyLiveGoalIntent(userInput: string, options: string[] = []): Promise<any | null> {
++async function applyLiveGoalIntent(
++  userInput: string,
++  options: string[] = [],
++  request: McpRequest | null = props.request,
++  isCurrent: () => boolean = () => true,
++): Promise<any | null> {
++  if (!isCurrent())
++    return null
+   const intent = resolveLiveGoalIntent(userInput, options)
+   if (!intent)
+     return null
+@@ -253,28 +270,35 @@ async function applyLiveGoalIntent(userInput: string, options: string[] = []): P
+     if (intent.action === 'start') {
+       const goal = await invoke('start_live_goal', {
+         title: intent.title,
+-        projectPath: props.request?.project_path,
+-        requestId: props.request?.id,
+-        codexThreadId: props.request?.codex_thread_id,
+-        codexDeeplink: props.request?.codex_deeplink,
++        projectPath: request?.project_path,
++        requestId: request?.id,
++        codexThreadId: request?.codex_thread_id,
++        codexDeeplink: request?.codex_deeplink,
+       })
++      if (!isCurrent())
++        return null
+       message.success('目标已登记到 Live Goal，正在提交给 Codex')
+       return goal
+     }
+     else if (intent.action === 'complete') {
+       const goal = await invoke('complete_live_goal')
++      if (!isCurrent())
++        return null
+       message.success('目标已标记完成')
+       return goal
+     }
+     else {
+       await invoke('clear_live_goal')
++      if (!isCurrent())
++        return null
+       message.success('目标已从菜单栏清除')
+       return null
+     }
+   }
+   catch (error) {
+     console.error('同步 Live Goal 失败:', error)
+-    message.warning(`目标同步失败: ${String(error)}`)
++    if (isCurrent())
++      message.warning(`目标同步失败: ${String(error)}`)
+     return null
+   }
+ }
+@@ -402,8 +426,34 @@ function buildGoalTitle(
+ 
+ // 计算属性
+ const isVisible = computed(() => !!props.request)
++const isNative = computed(() => props.request?.source === 'codex_native')
++const ordinaryDeliveryText = computed(() => {
++  switch (mcpDeliveryStatus.value) {
++    case 'waiting': return '等待调用方接收'
++    case 'returned': return '已交给调用方'
++    case 'disconnected': return '连接已断开'
++    case 'untracked': return '状态未跟踪'
++    default: return '状态待确认'
++  }
++})
++const nativeRetryConfirmed = ref(false)
++const nativeLocked = computed(() => ['sending', 'received'].includes(props.request?.native?.status || ''))
++const nativeStatusText = computed(() => {
++  const status = props.request?.native?.status
++  if (status === 'sending')
++    return '正在等待 CLI 接收确认…'
++  if (status === 'received')
++    return 'CLI 已接收（不代表模型已采用）'
++  if (status === 'unknown')
++    return '发送结果未知；未自动重发，人工重试可能重复'
++  return `CLI 问题 ${Number(props.request?.native?.index ?? 0) + 1} · 仅文字与选项，不支持附件`
++})
+ const hasOptions = computed(() => (props.request?.predefined_options?.length ?? 0) > 0)
+ const canSubmit = computed(() => {
++  if (isNative.value) {
++    return !nativeLocked.value && (props.request?.native?.status !== 'unknown' || nativeRetryConfirmed.value)
++      && (selectedOptions.value.length > 0 || userInput.value.trim().length > 0)
++  }
+   if (hasOptions.value) {
+     return selectedOptions.value.length > 0
+       || userInput.value.trim().length > 0
+@@ -710,10 +760,19 @@ watch(() => props.appConfig.reply, (newReplyConfig) => {
+ let telegramUnlisten: (() => void) | null = null
+ 
+ // 监听请求变化
+-watch(() => props.request, async (newRequest) => {
++watch(() => props.request, async (newRequest, oldRequest) => {
++  if (!newRequest || newRequest.id !== oldRequest?.id)
++    viewedHistoryNode.value = null
+   if (newRequest) {
++    if (newRequest.source === 'codex_native' && oldRequest?.id === newRequest.id)
++      return
+     focusPopupOnShow.value = false
+     resetForm()
++    nativeRetryConfirmed.value = false
++    if (newRequest.source === 'codex_native' && newRequest.native?.draft) {
++      userInput.value = newRequest.native.draft.userInput
++      selectedOptions.value = [...newRequest.native.draft.selectedOptions]
++    }
+     loading.value = true
+     try {
+       const config = await invoke<{ focus_popup_on_show?: boolean }>('get_window_config')
+@@ -756,6 +815,10 @@ watch(() => props.request, async (newRequest) => {
+   }
+ }, { immediate: true })
+ 
++watch(() => props.timelineTreeId, () => {
++  viewedHistoryNode.value = null
++})
++
+ watch(() => loading.value, (isLoading) => {
+   if (!isLoading) {
+     flushTimelinePrefill()
+@@ -811,6 +874,8 @@ async function setupTelegramListener() {
+ 
+ // 处理Telegram事件
+ function handleTelegramEvent(event: any) {
++  if (isNative.value)
++    return
+   console.log('🎯 [McpPopup] 开始处理事件:', event.type)
+ 
+   switch (event.type) {
+@@ -937,18 +1002,22 @@ function resetForm() {
+   submitting.value = false
+ }
+ 
+-async function backupCurrentSubmissionToClipboard() {
++async function backupCurrentSubmissionToClipboard(
++  snapshot = { enabled: copySubmissionToClipboardEnabled.value, userInput: rawUserInput.value, selectedOptions: [...selectedOptions.value] },
++  isCurrent: () => boolean = () => true,
++) {
++  if (!isCurrent())
++    return
+   try {
+     await copySubmissionToClipboard({
+-      enabled: copySubmissionToClipboardEnabled.value,
+-      userInput: rawUserInput.value,
+-      selectedOptions: selectedOptions.value,
++      ...snapshot,
+       writeText: text => invoke('plugin:clipboard-manager|write_text', { text }),
+     })
+   }
+   catch (error) {
+     console.error('发送内容备份到剪贴板失败:', error)
+-    message.warning('未能备份到剪贴板，仍将继续发送')
++    if (isCurrent())
++      message.warning('未能备份到剪贴板，仍将继续发送')
+   }
+ }
+ 
+@@ -956,49 +1025,104 @@ async function backupCurrentSubmissionToClipboard() {
+ async function handleSubmit() {
+   if (!canSubmit.value || submitting.value)
+     return
++  if (isNative.value) {
++    emit('response', {
++      user_input: userInput.value,
++      selected_options: [...selectedOptions.value],
++      images: [],
++      file_paths: [],
++      image_paths: [],
++      native_retry: nativeRetryConfirmed.value,
++      metadata: { request_id: props.request?.id, source: 'codex_native' },
++    })
++    return
++  }
+ 
+-  void invoke('timeline_debug_log', {
+-    location: 'frontend/mcp_popup/handle_submit:start',
+-    payload: {
+-      userInput: userInput.value,
+-      selectedOptions: selectedOptions.value,
+-      hasInputRef: Boolean(inputRef.value),
+-      hasRecordAutoPromotion: typeof inputRef.value?.recordSubmittedInputForAutoPromotion === 'function',
+-      sendTarget: 'ide',
+-    },
+-  }).catch(() => {})
+   submitting.value = true
+-
+-  try {
+-    await backupCurrentSubmissionToClipboard()
+-    const finalUserInput = buildFinalUserInput(userInput.value, attachedFiles.value)
+-    inputRef.value?.recordSubmittedInputForAutoPromotion()
++  const request: McpRequest | null = props.request ? JSON.parse(JSON.stringify(props.request)) : null
++  const requestId = request?.id || ''
++  const snapshot = {
++    request,
++    userInput: userInput.value,
++    rawUserInput: rawUserInput.value,
++    selectedOptions: [...selectedOptions.value],
++    draggedImages: [...draggedImages.value],
++    attachedFiles: attachedFiles.value.map(file => ({ ...file })),
++    copyToClipboard: copySubmissionToClipboardEnabled.value,
++    input: inputRef.value,
++  }
++  const ownsPopup = () => isDesktopSubmissionCurrent(props.request, snapshot.request)
++  const prepare = async (ownsHandler: () => boolean = () => true) => {
++    const isCurrent = () => ownsPopup() && ownsHandler()
++    const checkCurrent = () => {
++      if (!isCurrent())
++        throw new Error('请求已变化，已停止准备回复')
++    }
++    checkCurrent()
++    void invoke('timeline_debug_log', {
++      location: 'frontend/mcp_popup/handle_submit:start',
++      payload: {
++        userInput: snapshot.userInput,
++        selectedOptions: snapshot.selectedOptions,
++        hasInputRef: Boolean(snapshot.input),
++        hasRecordAutoPromotion: typeof snapshot.input?.recordSubmittedInputForAutoPromotion === 'function',
++        sendTarget: 'ide',
++      },
++    }).catch(() => {})
++    await backupCurrentSubmissionToClipboard({ enabled: snapshot.copyToClipboard, userInput: snapshot.rawUserInput, selectedOptions: snapshot.selectedOptions }, isCurrent)
++    checkCurrent()
++    const finalUserInput = buildFinalUserInput(snapshot.userInput, snapshot.attachedFiles)
++    snapshot.input?.recordSubmittedInputForAutoPromotion(snapshot.rawUserInput)
+     const response = {
+       user_input: finalUserInput,
+-      selected_options: selectedOptions.value,
+-      images: buildImageAttachments(draggedImages.value),
+-      file_paths: buildFilePaths(attachedFiles.value),
++      selected_options: snapshot.selectedOptions,
++      images: buildImageAttachments(snapshot.draggedImages),
++      file_paths: buildFilePaths(snapshot.attachedFiles),
+       image_paths: [],
+       metadata: {
+         timestamp: new Date().toISOString(),
+-        request_id: props.request?.id || null,
+-        source: resolveSubmitSource(finalUserInput ?? '', selectedOptions.value),
++        request_id: requestId || null,
++        source: resolveSubmitSource(finalUserInput ?? '', snapshot.selectedOptions),
+       },
+     }
+ 
+     if (!response.user_input && response.selected_options.length === 0 && response.images.length === 0)
+       response.user_input = '用户确认继续'
+ 
+-    const liveGoalSnapshot = await applyLiveGoalIntent(response.user_input || '', response.selected_options)
+-    if (liveGoalSnapshot)
+-      Object.assign(response.metadata, await resolveLiveGoalResponseMetadata(liveGoalSnapshot))
++    const liveGoalSnapshot = await applyLiveGoalIntent(response.user_input || '', response.selected_options, snapshot.request, isCurrent)
++    checkCurrent()
++    if (liveGoalSnapshot) {
++      const metadata = await resolveLiveGoalResponseMetadata(liveGoalSnapshot, snapshot.request, isCurrent)
++      checkCurrent()
++      Object.assign(response.metadata, metadata)
++    }
+ 
+     if (props.mockMode) {
+       await new Promise(resolve => setTimeout(resolve, 1000))
++      checkCurrent()
+       message.success('模拟响应发送成功')
+     }
+ 
+-    emit('response', response)
++    return response
++  }
++
++  if (!props.mockMode && !props.testMode) {
++    const submission: DesktopMcpSubmission = {
++      kind: 'desktop_mcp_submission',
++      requestId,
++      request: snapshot.request,
++      prepare,
++      settled: () => {
++        if (ownsPopup())
++          submitting.value = false
++      },
++    }
++    emit('response', submission)
++    return
++  }
++
++  try {
++    emit('response', await prepare())
+   }
+   catch (error) {
+     console.error('提交失败:', error)
+@@ -1025,6 +1149,8 @@ function handleImageAdd(_image: string) {
+ 
+ // 处理继续按钮点击
+ async function handleContinue() {
++  if (isNative.value)
++    return
+   if (submitting.value)
+     return
+ 
+@@ -1071,14 +1197,24 @@ function handleQuoteMessage(messageContent: string) {
+   }
+ }
+ 
+-function handleTimelineNodeQuote(content: string) {
+-  const normalized = content.trim()
++async function handleTimelineNodeQuote(content: string) {
++  const selection = window.getSelection()
++  const selectedText = selection?.anchorNode && viewedHistoryContentRef.value?.contains(selection.anchorNode)
++    ? selection.toString().trim()
++    : ''
++  const normalized = (selectedText || content).trim()
+   if (!normalized)
+     return
++  returnToCurrentQuestion()
++  await nextTick()
+   handleQuoteMessage(normalized)
+ }
+ 
+ function handleFilesAdd(files: PopupFileAttachment[]) {
++  if (isNative.value) {
++    message.warning('CLI 问题不支持附件，请用文字或选项回答')
++    return
++  }
+   const mergedFiles = [...attachedFiles.value]
+ 
+   files.forEach((file) => {
+@@ -1131,19 +1267,25 @@ function normalizeOptionalNumber(value: unknown): number | null {
+   return Number.isFinite(numeric) && numeric >= 0 ? Math.trunc(numeric) : null
+ }
+ 
+-async function resolveLiveGoalResponseMetadata(liveGoal: any | null): Promise<LiveGoalRunMetadata> {
++async function resolveLiveGoalResponseMetadata(
++  liveGoal: any | null,
++  request: McpRequest | null = props.request,
++  isCurrent: () => boolean = () => true,
++): Promise<LiveGoalRunMetadata> {
+   const runId = normalizeOptionalString(liveGoal?.run_id ?? liveGoal?.runId)
+   const generation = normalizeOptionalNumber(liveGoal?.generation ?? liveGoal?.runGeneration)
+   const fallback = emptyLiveGoalRunMetadata(runId, generation)
+-  if (!runId && generation === null)
++  if (!isCurrent() || (!runId && generation === null))
+     return fallback
+ 
+   try {
+     const metadata = await invoke<any>('resolve_live_goal_response_metadata', {
+-      projectPath: props.request?.project_path,
++      projectPath: request?.project_path,
+       runId,
+       generation,
+     })
++    if (!isCurrent())
++      return fallback
+     return {
+       run_id: normalizeOptionalString(metadata?.run_id ?? metadata?.runId) ?? runId,
+       generation: normalizeOptionalNumber(metadata?.generation ?? metadata?.runGeneration) ?? generation,
+@@ -1210,6 +1352,8 @@ function shouldPrefetchGoalRunHuiSnapshot(goal: string): boolean {
+ 
+ // 处理目标按钮点击：启动 Live Goal，并提交一次非 loop 的目标模式请求。
+ async function handleGoalSubmit() {
++  if (isNative.value)
++    return
+   if (submitting.value)
+     return
+ 
+@@ -1304,12 +1448,21 @@ defineExpose({
+       <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin" @click="handleMiddleZoneClick">
+         <!-- 消息内容 - 允许选中 -->
+         <div class="mx-2 mt-2 mb-1 px-4 py-3 bg-black-100 rounded-lg select-text" data-guide="popup-content">
++          <div v-if="viewedHistoryNode" data-guide="popup-history-content">
++            <div class="mb-2 text-xs font-semibold text-gray-400">
++              {{ viewedHistoryNode.node_type === 'user' ? '用户' : '助手' }}
++            </div>
++            <div ref="viewedHistoryContentRef" class="whitespace-pre-wrap break-words">
++              {{ viewedHistoryNode.content }}
++            </div>
++          </div>
+           <PopupContent
++            v-else
+             ref="contentRef"
+             :request="request"
+             :loading="loading"
+             :current-theme="props.appConfig.theme"
+-            :browser-ai-response="browserAiResponse"
++            :browser-ai-response="isNative ? null : browserAiResponse"
+             @add-files="handleFilesAdd"
+             @open-artifact="handleOpenArtifact"
+             @quote-message="handleQuoteMessage"
+@@ -1318,7 +1471,32 @@ defineExpose({
+ 
+         <!-- 输入和选项 - 允许选中 -->
+         <div class="px-4 pb-3 bg-black select-text">
++          <div v-if="viewedHistoryNode" class="mb-2 flex items-center justify-between gap-2 text-xs text-gray-500">
++            <span>回复当前待回复请求 · {{ request?.conversation_title || request?.project_path || '当前请求' }}</span>
++            <div class="flex gap-2 flex-shrink-0">
++              <n-button v-if="!isNative" size="small" @click="handleTimelineNodeQuote(viewedHistoryNode.content)">引用</n-button>
++              <n-button size="small" @click="returnToCurrentQuestion">返回当前问题</n-button>
++            </div>
++          </div>
++          <div v-if="isNative" class="flex flex-col gap-2" data-guide="native-question-input">
++            <div class="text-xs text-gray-500">
++              {{ nativeStatusText }}
++            </div>
++            <NCheckboxGroup v-model:value="selectedOptions" :disabled="nativeLocked">
++              <div v-for="option in request?.predefined_options" :key="option" class="mb-2">
++                <n-checkbox :value="option" :label="option" />
++              </div>
++            </NCheckboxGroup>
++            <n-input v-model:value="userInput" type="textarea" :disabled="nativeLocked" placeholder="输入回答" :autosize="{ minRows: 3, maxRows: 10 }" />
++            <div v-if="request?.native?.error" class="text-xs text-red-500" role="status">
++              {{ request.native.error }}
++            </div>
++            <n-checkbox v-if="request?.native?.status === 'unknown'" v-model:checked="nativeRetryConfirmed">
++              我知道人工重试可能造成重复回答
++            </n-checkbox>
++          </div>
+           <PopupInput
++            v-else
+             ref="inputRef"
+             :request="request"
+             :context-key="popupContextKey"
+@@ -1339,12 +1517,13 @@ defineExpose({
+       <!-- 右侧：时间线小球条（仅在内容区，不延伸到底部操作栏） -->
+       <div class="timeline-dot-column flex-shrink-0 self-stretch min-h-0 overflow-hidden">
+         <TimelineDotBar
++          :key="`${request?.id}:${timelineSelectionRevision}`"
+           :tree-id="props.timelineTreeId ?? null"
+           :current-node-id="props.timelineCurrentNodeId ?? null"
+           :mock-nodes="props.timelineMockNodes"
+           compact-hover
+           :compact-expanded="timelineEdgeActive"
+-          @node-click="emit('timelineNodeClick', $event)"
++          @node-click="viewedHistoryNode = $event"
+           @node-quote="handleTimelineNodeQuote"
+         />
+       </div>
+@@ -1352,8 +1531,21 @@ defineExpose({
+ 
+     <!-- 底部操作栏 - 固定在底部 -->
+     <div class="mt-auto flex-shrink-0 bg-black-100 border-t-2 border-black-200" data-guide="popup-actions">
++      <div v-if="isNative" class="px-4 py-3 flex items-center justify-between gap-3">
++        <span class="text-xs text-gray-500" role="status">{{ nativeStatusText }}</span>
++        <div class="flex gap-2 flex-shrink-0">
++          <n-button :disabled="request?.native?.status === 'sending'" @click="emit('cancel')">
++            关闭
++          </n-button>
++          <n-button v-if="request?.native?.status !== 'received'" type="primary" :disabled="!canSubmit" :loading="request?.native?.status === 'sending'" @click="handleSubmit">
++            {{ (request?.native?.remaining ?? 0) > 0 ? '下一题' : request?.native?.status === 'unknown' ? '重试发送' : '发送' }}
++          </n-button>
++        </div>
++      </div>
+       <PopupActions
++        v-else
+         :request="request" :loading="loading" :submitting="submitting" :can-submit="canSubmit"
++        :connection-status="ordinaryDeliveryText"
+         :continue-reply-enabled="continueReplyEnabled" :input-status-text="inputStatusText"
+         @submit="handleSubmit" @continue="handleContinue" @goal-submit="handleGoalSubmit"
+       />
+diff --git a/src/frontend/components/popup/PopupActions.vue b/src/frontend/components/popup/PopupActions.vue
+index 4fa324b..227c4db 100644
+--- a/src/frontend/components/popup/PopupActions.vue
++++ b/src/frontend/components/popup/PopupActions.vue
+@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
+   loading: false,
+   submitting: false,
+   canSubmit: false,
+-  connectionStatus: '已连接',
++  connectionStatus: '状态待确认',
+   continueReplyEnabled: true,
+   inputStatusText: '',
+ })
+@@ -111,7 +111,7 @@ onMounted(() => {
+       <!-- 左侧状态信息 -->
+       <div class="flex items-center min-w-0 flex-1">
+         <div class="flex items-center gap-2 text-xs text-gray-600 min-w-0">
+-          <div class="popup-status-dot w-2 h-2 rounded-full" />
++          <div v-if="connectionStatus === '等待调用方接收'" class="popup-status-dot w-2 h-2 rounded-full" />
+           <span class="font-medium">{{ connectionStatus }}</span>
+           <span class="opacity-60">|</span>
+           <span class="opacity-60 truncate">{{ statusText }}</span>
+diff --git a/src/frontend/components/popup/PopupContent.vue b/src/frontend/components/popup/PopupContent.vue
+index 82c832d..9fddcb4 100644
+--- a/src/frontend/components/popup/PopupContent.vue
++++ b/src/frontend/components/popup/PopupContent.vue
+@@ -82,6 +82,9 @@ const requestContentRef = ref<HTMLElement | null>(null)
+ const browserResponseRef = ref<HTMLElement | null>(null)
+ const previewImageSrc = ref<string | null>(null)
+ const dialog = useDialog()
++const platform = navigator.platform.toUpperCase()
++const isWindows = platform.includes('WIN')
++const fileManager = isWindows ? '资源管理器' : platform.includes('MAC') ? 'Finder' : '文件管理器'
+ 
+ interface ManagedSelectionRange {
+   range: Range
+@@ -492,8 +495,10 @@ async function openLocalMarkdownHref(href: string, event: MouseEvent) {
+   }
+ 
+   if (isOutsideCurrentProject(target, projectPath)) {
+-    const platform = navigator.platform.toUpperCase()
+-    const fileManager = platform.includes('WIN') ? '资源管理器' : platform.includes('MAC') ? 'Finder' : '文件管理器'
++    if (isWindows) {
++      await openConfirmedExternalLocalFile(target.path)
++      return
++    }
+     dialog.warning({
+       title: '打开跨项目文件或文件夹？',
+       content: `将在${fileManager}中打开文件夹或定位文件，不会执行文件或交给编辑器：\n${target.path}`,
+@@ -1033,7 +1038,7 @@ defineExpose({
+         <div class="flex gap-2 relative">
+           <!-- @路径按钮 - 使用原生 Finder 选择文件或文件夹 -->
+           <div
+-            title="打开 Finder 选择文件或文件夹路径"
++            :title="`打开${fileManager}选择文件或文件夹路径`"
+             class="popup-message-action-button inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors duration-100"
+             @click="openNativeFileSelector"
+           >
+diff --git a/src/frontend/components/popup/PopupHeader.vue b/src/frontend/components/popup/PopupHeader.vue
+index 3a60eae..ed0064c 100644
+--- a/src/frontend/components/popup/PopupHeader.vue
++++ b/src/frontend/components/popup/PopupHeader.vue
+@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event'
+ import { useMessage } from 'naive-ui'
+ import { computed, onMounted, onUnmounted, ref } from 'vue'
+ import { crossDeviceSendError, useCrossDevice } from '../../composables/useCrossDevice'
+-import { useMcpDelivery } from '../../composables/useMcpDelivery'
++import { mcpDeliveryError } from '../../composables/useMcpDelivery'
+ import { hasOpenModifier } from '../../utils/clickModifiers'
+ import CrossDeviceToggle from '../common/CrossDeviceToggle.vue'
+ import ThemeIcon from '../common/ThemeIcon.vue'
+@@ -75,7 +75,6 @@ const props = withDefaults(defineProps<Props>(), {
+ 
+ const emit = defineEmits<Emits>()
+ const message = useMessage()
+-const { mcpDeliveryError } = useMcpDelivery()
+ const { crossState } = useCrossDevice()
+ let suppressNextProjectPathClick = false
+ const preventSleepEnabled = ref(false)
+diff --git a/src/frontend/components/settings/mobileConnectionMachine.test.ts b/src/frontend/components/settings/mobileConnectionMachine.test.ts
+index 161513a..8f7a7cf 100644
+--- a/src/frontend/components/settings/mobileConnectionMachine.test.ts
++++ b/src/frontend/components/settings/mobileConnectionMachine.test.ts
+@@ -255,11 +255,11 @@ test('formal AI prompts are redacted, route-scoped, and contain no developer hos
+   const prompt = await readFile(new URL('./useMobileConnectionSetup.ts', import.meta.url), 'utf8')
+   const aliyunSetup = prompt.slice(prompt.indexOf('export function buildAliyunIpRouteSetupPrompt()'), prompt.indexOf('export function buildFormalRouteSetupPrompt()'))
+ 
+-  assert.match(aliyunSetup, /公网 Host（含端口）/)
+-  assert.match(aliyunSetup, /X-Forwarded-For/)
+-  assert.match(aliyunSetup, /X-Forwarded-Proto/)
+-  assert.match(aliyunSetup, /\/api\/config、\/api\/active-sessions 及 \/ws WebSocket Upgrade 都必须返回 401/)
+-  assert.match(aliyunSetup, /不得关闭 Bridge 鉴权/)
++  assert.match(aliyunSetup, /独立于 Windows/)
++  assert.match(aliyunSetup, /--transport cloud_hub/)
++  assert.match(aliyunSetup, /service=iterate-hub/)
++  assert.match(aliyunSetup, /保留 5311/)
++  assert.doesNotMatch(aliyunSetup, /--transport aliyun_ssh_reverse_tunnel/)
+   assert.match(prompt, /buildFormalRouteSetupPrompt/)
+   assert.match(prompt, /buildFormalRouteRepairPrompt/)
+   assert.match(prompt, /\$\{safeBaseUrl\}/)
+diff --git a/src/frontend/components/settings/mobileConnectionMachine.ts b/src/frontend/components/settings/mobileConnectionMachine.ts
+index 92670f8..0c32ce8 100644
+--- a/src/frontend/components/settings/mobileConnectionMachine.ts
++++ b/src/frontend/components/settings/mobileConnectionMachine.ts
+@@ -123,7 +123,7 @@ export function isHealthySecurePairingCandidate(candidate: PairingStatusCandidat
+   if (candidate.disabled)
+     return false
+   const mode = String(candidate.transport_mode || '').toLowerCase()
+-  if (!['public_tunnel', 'cloudflare_tunnel', 'relay'].includes(mode))
++  if (!['public_tunnel', 'cloudflare_tunnel', 'relay', 'cloud_hub'].includes(mode))
+     return false
+   const health = String(candidate.health || '').toLowerCase()
+   if (!['healthy', 'ok'].includes(health))
+@@ -158,7 +158,7 @@ export function resolveMobileConnectionBootstrap(
+   const routeIsHealthy = String(formalRoute.health || '').toLowerCase() === 'healthy'
+     && formalRoute.endpoint_identity_ok === true
+   const matchingCandidate = normalizePairingStatusCandidates(pairingStatus).some(candidate => (
+-    candidate.transport_mode === 'public_tunnel'
++    (candidate.transport_mode === 'public_tunnel' || (formalRoute.transport === 'cloud_hub' && candidate.transport_mode === 'cloud_hub'))
+     && isHealthySecurePairingCandidate(candidate)
+     && sameOrigin(String(candidate.base_url || ''), configuredBaseUrl)
+   ))
+diff --git a/src/frontend/components/settings/useMobileConnectionSetup.ts b/src/frontend/components/settings/useMobileConnectionSetup.ts
+index 550cca6..125cef6 100644
+--- a/src/frontend/components/settings/useMobileConnectionSetup.ts
++++ b/src/frontend/components/settings/useMobileConnectionSetup.ts
+@@ -65,13 +65,13 @@ interface SetupOptions {
+ const DEFAULT_PAIRING_BASE_URL = 'http://127.0.0.1:8080'
+ 
+ export function buildAliyunIpRouteSetupPrompt() {
+-  return `请为当前 Windows 电脑上的 iterate 配置长期稳定的阿里云 IP 正式手机路线，公网入口使用可信 IP 证书的 https://服务器公网IP:8443。
++  return `请为 iterate 配置独立于 Windows 的阿里云中心，公网入口使用可信 IP 证书的 https://服务器公网IP:8443。
+ 
+-1. 先确认本机 Bridge 的 http://127.0.0.1:8080/api/version 正常，并只读检查阿里云 8443 端口、现有 443 网站和现有服务。
+-2. 建立 Windows 可自动重连的出站 SSH，将阿里云仅监听 127.0.0.1:18080 的反向端口转发到本机 127.0.0.1:8080。
+-3. 在阿里云单独配置 IP:8443 的 HTTPS/WSS 反向代理与可信 IP 证书及自动续期；nginx 必须保留公网 Host（含端口）、传递真实客户端 X-Forwarded-For，并设置 X-Forwarded-Proto 为 https。只放通必要的 8443，不改现有 443 网站和其他接口。
+-4. 从公网验证证书、/.well-known/iterate/health 的当前安装身份、WebSocket 路径和 SSH 断线重连；无凭据请求 /api/config、/api/active-sessions 及 /ws WebSocket Upgrade 都必须返回 401，不得关闭 Bridge 鉴权。失败时停止新增服务并恢复此次配置。
+-5. 验证成功后，使用当前 iterate 可执行文件执行 --mobile-route-register --transport aliyun_ssh_reverse_tunnel --base-url "https://服务器公网IP:8443" --source ai_configured，再运行 --mobile-route-verify。
++1. 只读检查现有 8443、443、云服务及两台源设备的有效配置；不要覆盖健康的既有路线。
++2. 中心运行独立 iterate-hub 与持久 SQLite；Windows/Mac 使用各自源凭据主动连接，源端保留原注册与获胜账本。手机继承现有权限，Mac 只发布获准文字镜像。
++3. HTTPS/WSS 代理指向云端 loopback hub，不转发到 Windows。保留可信 IP 证书与主机身份校验；管理员接口限运维通道。不得修改现有 443 网站或使用跳过证书校验的客户端。
++4. 切换前冻结并排空，查询未知结果，取得当轮每个源的真实全入口屏障；保留 5311 主会话。验证 /health 的 service=iterate-hub、protocol=1，/ws 未授权返回 401，以及 Windows 离线时 Mac 镜像仍可用。
++5. 实际部署及验收成功后运行 --mobile-route-register --transport cloud_hub --base-url "https://服务器公网IP:8443" --source ai_configured，再运行 --mobile-route-verify。未验证前不改变正式配置。
+ 
+ 不得在输出中展示 SSH 私钥、凭据、配对链接或原始日志。任何需要新增费用、改变现有公网服务或安全边界的步骤，先说明影响并取得用户决定。`
+ }
+@@ -108,6 +108,9 @@ export function buildFormalRouteRepairPrompt(baseUrl: string, code: string, tran
+     ? baseUrl.trim()
+     : '已配置的正式 HTTPS 域名（请从 iterate 脱敏状态中读取）'
+   const safeCode = String(code || 'formal_route_unhealthy').replace(/[^\w.:-]/g, '_').slice(0, 120)
++  if (transport === 'cloud_hub') {
++    return `请只检查已配置的 iterate 阿里云中心 ${safeBaseUrl}，错误码 ${safeCode}。运行 --mobile-route-status 和 --mobile-route-verify，确认 TLS 证书及主机身份、/health 的 service=iterate-hub 与 protocol=1、/ws 未授权返回 401。分别检查 Windows/Mac 源客户端的独立连接与原账本；Windows 离线不应使获准 Mac 镜像消失。不要重建 Windows 反向 SSH 隧道，不关闭 5311，不输出 token，不重放确认未知的动作。变更或受控接管前先对账现有任务。`
++  }
+   if (transport === 'aliyun_ssh_reverse_tunnel') {
+     return `请只修复当前电脑上 iterate 已配置的阿里云 IP + SSH 正式手机路线。
+ 
+diff --git a/src/frontend/composables/useCrossDevice.ts b/src/frontend/composables/useCrossDevice.ts
+index 6723ecb..7de37b8 100644
+--- a/src/frontend/composables/useCrossDevice.ts
++++ b/src/frontend/composables/useCrossDevice.ts
+@@ -12,7 +12,7 @@ interface CrossDeviceStatus {
+   origin_name?: string
+   resolved?: boolean
+   local_only?: boolean
+-  source_pending?: { response: unknown, request_id: string, project_path: string | null }
++  source_pending?: { response: unknown, request_id: string, project_path: string | null, timeline_route_id?: string | null }
+   error?: string
+ }
+ 
+@@ -31,7 +31,7 @@ export async function refreshCrossDevice() {
+     state.value = await invoke<CrossDeviceStatus>('get_cross_device_status')
+     if (state.value.source_pending) {
+       const pending = state.value.source_pending
+-      await invoke('send_mcp_response', { response: pending.response, requestId: pending.request_id, projectPath: pending.project_path, timelineRouteId: null })
++      await invoke('send_mcp_response', { response: pending.response, requestId: pending.request_id, projectPath: pending.project_path, timelineRouteId: pending.timeline_route_id ?? null })
+       await publishCompletedMcpRequest(pending.request_id, pending.project_path)
+       // Deferred sources retain their GUI until the HTTP handoff completes.
+       // Only close after success; a failed handoff must keep its error window.
+diff --git a/src/frontend/composables/useGlobalSpeechRuntimeHost.ts b/src/frontend/composables/useGlobalSpeechRuntimeHost.ts
+index 0538a17..ef658f9 100644
+--- a/src/frontend/composables/useGlobalSpeechRuntimeHost.ts
++++ b/src/frontend/composables/useGlobalSpeechRuntimeHost.ts
+@@ -45,20 +45,6 @@ export function useGlobalSpeechRuntimeHost() {
+     return []
+   }
+ 
+-  async function preloadPermissions() {
+-    const checks = [
+-      ['microphone_status', 'request_microphone_permission'],
+-      ['speech_recognition_status', 'request_speech_recognition_permission'],
+-      ['accessibility_status', 'request_accessibility_permission'],
+-      ['input_monitoring_status', 'request_input_monitoring_permission'],
+-    ] as const
+-    for (const [statusCommand, requestCommand] of checks) {
+-      const granted = await invoke<boolean>(statusCommand).catch(() => false)
+-      if (!granted)
+-        await invoke(requestCommand).catch(() => undefined)
+-    }
+-  }
+-
+   async function refreshRecognitionResources() {
+     const [muscleResult, correctionResult, vocabularyResult] = await Promise.all([
+       invoke<unknown>('get_speech_muscle_memory_entries').catch(() => []),
+@@ -182,7 +168,8 @@ export function useGlobalSpeechRuntimeHost() {
+     unlistenTranscript = await listen<ProcessTranscriptPayload>('speech://process-transcript', event => void processTranscript(event.payload))
+     const snapshot = await invoke<SpeechSnapshot>('get_speech_control_snapshot')
+     acceptSnapshot(snapshot)
+-    void preloadPermissions()
++    // Permission requests belong to explicit user actions in speech settings.
++    // Starting a host (including a mirrored popup) must not open System Settings.
+   }
+ 
+   function dispose() {
+diff --git a/src/frontend/composables/useMcpDelivery.ts b/src/frontend/composables/useMcpDelivery.ts
+index 398fcb8..7f6da86 100644
+--- a/src/frontend/composables/useMcpDelivery.ts
++++ b/src/frontend/composables/useMcpDelivery.ts
+@@ -1,37 +1,107 @@
+ import { invoke } from '@tauri-apps/api/core'
+ import { getCurrentWindow } from '@tauri-apps/api/window'
+-import { onMounted, onUnmounted, ref } from 'vue'
++import { onMounted, onUnmounted, ref, watch } from 'vue'
++import { publishClosedMcpRequest } from '../services/bridgeRequestClosure'
+ 
+ export const mcpDeliveryError = ref('')
++export const mcpDeliveryStatus = ref<'unknown' | 'untracked' | 'waiting' | 'returned' | 'disconnected'>('unknown')
+ export const MCP_DELIVERY_FAILURE = '连接已断开，回复未确认送达，请检查 AI 客户端。'
+ 
+-export function useMcpDelivery() {
++interface DeliverySource {
++  id?: unknown
++  project_path?: unknown
++  source?: unknown
++}
++
++export function useMcpDelivery(getSource: () => DeliverySource | null) {
+   let timer: ReturnType<typeof setInterval> | undefined
+   let reading = false
+   let warned = false
++  let mounted = false
++  let closed = false
++  let sourceRevision = 0
++  let originalSource: { id: string, projectPath: string | null } | null = null
++
++  function readSource() {
++    const request = getSource()
++    const id = typeof request?.id === 'string' ? request.id.trim() : ''
++    const projectPath = typeof request?.project_path === 'string' ? request.project_path.trim() : ''
++    if (!id || id.startsWith('native-codex:') || request?.source === 'codex_native') {
++      return null
++    }
++    const lowerProject = projectPath.toLowerCase()
++    const closeProject = !projectPath || projectPath === '.' || lowerProject === 'unknown'
++      || lowerProject.startsWith('unknown:') || lowerProject.startsWith('standalone:')
++      ? null
++      : projectPath
++    return { id, projectPath: closeProject }
++  }
++
++  watch(() => {
++    const request = getSource()
++    return [request?.id, request?.project_path, request?.source] as const
++  }, () => {
++    sourceRevision++
++    // Delivery status belongs to this process's original MCP source, not a
++    // later displayed question. The optional workspace gates remote closure,
++    // but must not prevent the original request's local delivery warning.
++    const current = readSource()
++    originalSource ??= current
++    if (current && originalSource && current.id === originalSource.id
++      && !originalSource.projectPath && current.projectPath) {
++      originalSource = { id: originalSource.id, projectPath: current.projectPath }
++    }
++  }, { immediate: true, flush: 'sync' })
++
+   async function refresh() {
+-    if (reading || warned)
++    if (reading || closed || !originalSource)
++      return
++    const source = originalSource
++    const revision = sourceRevision
++    const isCurrent = () => {
++      const current = readSource()
++      return mounted && revision === sourceRevision
++        && current?.id === source.id
++    }
++    const canClose = () => isCurrent() && source.projectPath !== null
++      && readSource()?.projectPath === source.projectPath
++    if (!isCurrent())
+       return
+     reading = true
+     try {
+       const status = await invoke<string>('get_mcp_delivery_status')
++      if (!isCurrent())
++        return
++      mcpDeliveryStatus.value = status === 'untracked' || status === 'waiting' || status === 'returned' || status === 'disconnected'
++        ? status
++        : 'unknown'
+       if (status === 'untracked' || status === 'returned') {
+         clearInterval(timer)
+         return
+       }
+       if (status === 'disconnected') {
+-        warned = true
+         mcpDeliveryError.value = MCP_DELIVERY_FAILURE
+-        const focusOnShow = await invoke<{ focus_popup_on_show?: boolean }>('get_window_config')
+-          .then(config => config.focus_popup_on_show !== false)
+-          .catch(() => true)
+-        if (!focusOnShow) {
+-          await invoke('center_window')
++        // Retry closure independently of the once-only window warning.
++        if (!warned) {
++          warned = true
++          const focusOnShow = await invoke<{ focus_popup_on_show?: boolean }>('get_window_config')
++            .then(config => config.focus_popup_on_show !== false)
++            .catch(() => true)
++          if (!isCurrent())
++            return
++          if (!focusOnShow) {
++            await invoke('center_window')
++          }
++          else {
++            const window = getCurrentWindow()
++            await window.show()
++            if (isCurrent())
++              await window.setFocus()
++          }
+         }
+-        else {
+-          const window = getCurrentWindow()
+-          await window.show()
+-          await window.setFocus()
++        if (source.projectPath && await publishClosedMcpRequest(source.id, source.projectPath, canClose)) {
++          closed = true
++          clearInterval(timer)
+         }
+       }
+     }
+@@ -41,11 +111,15 @@ export function useMcpDelivery() {
+     }
+   }
+   onMounted(() => {
++    mounted = true
+     timer = setInterval(() => {
+       void refresh()
+     }, 500)
+     void refresh()
+   })
+-  onUnmounted(() => clearInterval(timer))
++  onUnmounted(() => {
++    mounted = false
++    clearInterval(timer)
++  })
+   return { mcpDeliveryError }
+ }
+diff --git a/src/frontend/composables/useMcpHandler.immediateDismiss.test.ts b/src/frontend/composables/useMcpHandler.immediateDismiss.test.ts
+index 7cab0c6..be60ff9 100644
+--- a/src/frontend/composables/useMcpHandler.immediateDismiss.test.ts
++++ b/src/frontend/composables/useMcpHandler.immediateDismiss.test.ts
+@@ -12,9 +12,12 @@ describe('MCP response immediate dismissal', () => {
+   it('dismisses the popup before route lookup and response persistence', () => {
+     const responseHandler = source.match(/async function handleMcpResponse\(response: any\) \{([\s\S]*?)\n {2}\}/)?.[1]
+     assert.ok(responseHandler)
+-    const dismissIndex = responseHandler.indexOf('await dismissMcpUiImmediately(request)')
+-    const routeIndex = responseHandler.indexOf('await resolveConversationRouteIdWithFallback')
+-    const sendIndex = responseHandler.indexOf('send_mcp_response')
++    // Legacy already-prepared actions retain their original dismissal path.
++    // Click-to-send preparation is exercised by desktopSubmission behavioral tests.
++    const legacyResponseHandler = responseHandler.slice(responseHandler.indexOf('let dismissal:'))
++    const dismissIndex = legacyResponseHandler.indexOf('await dismissMcpUiImmediately(request)')
++    const routeIndex = legacyResponseHandler.indexOf('await resolveConversationRouteIdWithFallback')
++    const sendIndex = legacyResponseHandler.indexOf('send_mcp_response')
+     assert.ok(dismissIndex >= 0)
+     assert.ok(routeIndex > dismissIndex)
+     assert.ok(sendIndex > routeIndex)
+diff --git a/src/frontend/composables/useMcpHandler.ts b/src/frontend/composables/useMcpHandler.ts
+index f52946f..0c2b959 100644
+--- a/src/frontend/composables/useMcpHandler.ts
++++ b/src/frontend/composables/useMcpHandler.ts
+@@ -4,8 +4,9 @@ import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window'
+ import { nextTick, ref } from 'vue'
+ import { publishCompletedMcpRequest } from '../services/bridgeRequestClosure'
+ import { clearActiveMcpFatalContext, setActiveMcpFatalContext } from '../utils/mcpFatalError'
++import { isDesktopMcpSubmission, isDesktopSubmissionCurrent, runDesktopMcpSubmission } from './desktopMcpSubmission'
+ import { crossDeviceSendError } from './useCrossDevice'
+-import { MCP_DELIVERY_FAILURE, mcpDeliveryError } from './useMcpDelivery'
++import { MCP_DELIVERY_FAILURE, mcpDeliveryError, useMcpDelivery } from './useMcpDelivery'
+ import { useNotification } from './useNotification'
+ 
+ const MUTE_STORAGE_KEY = 'iterate.muted'
+@@ -330,7 +331,153 @@ export function useMcpHandler() {
+   const mcpRequest = ref(null)
+   const showMcpPopup = ref(false)
+   const isMcpProcess = ref(false)
++  useMcpDelivery(() => {
++    const request = mcpRequest.value as any
++    return isMcpProcess.value && request
++      ? { id: resolveRequestId(request), project_path: request.project_path ?? request.projectPath, source: request.source }
++      : null
++  })
+   const resolvingRequestIds = new Set<string>()
++  const pendingDialogs: any[] = []
++  const nativeDrafts = new Map<string, { userInput: string, selectedOptions: string[] }>()
++  const locallyHiddenNative = new Set<string>()
++  let nativeQuestions: any[] = []
++  let nativeRevision = 0
++  let openingDialog = false
++  let nativeSendingId: string | null = null
++
++  function isNative(request: any) {
++    return request?.source === 'codex_native' && request?.native && String(request?.id).startsWith('native-codex:')
++  }
++
++  function nativeDisplay(request: any) {
++    const group = nativeQuestions.filter(q => q.native.group_id === request.native.group_id && !locallyHiddenNative.has(q.id))
++    return { ...request, native: { ...request.native, remaining: group.filter(q => q.id !== request.id && !nativeDrafts.has(q.id)).length, draft: nativeDrafts.get(request.id) } }
++  }
++
++  async function pumpDialogs() {
++    if (openingDialog || mcpRequest.value || isMcpProcess.value)
++      return
++    let request = pendingDialogs.shift()
++    if (!request) {
++      // If another client answered the current item, preserve keyed drafts of remaining items.
++      request = nativeQuestions.find(q => !locallyHiddenNative.has(q.id))
++    }
++    if (!request)
++      return
++    openingDialog = true
++    try {
++      await showMcpDialog(isNative(request) ? nativeDisplay(request) : request)
++    }
++    finally {
++      openingDialog = false
++      if (!mcpRequest.value)
++        void pumpDialogs()
++    }
++  }
++
++  function reconcileNative(snapshot: any) {
++    if (!snapshot || snapshot.revision <= nativeRevision || !Array.isArray(snapshot.questions))
++      return
++    nativeRevision = snapshot.revision
++    nativeQuestions = snapshot.questions.filter(isNative)
++    const liveIds = new Set(nativeQuestions.map(q => q.id))
++    for (const id of nativeDrafts.keys()) {
++      if (!liveIds.has(id) && id !== nativeSendingId)
++        nativeDrafts.delete(id)
++    }
++    for (let i = pendingDialogs.length - 1; i >= 0; i--) {
++      if (isNative(pendingDialogs[i]) && !liveIds.has(pendingDialogs[i].id))
++        pendingDialogs.splice(i, 1)
++    }
++    const current = mcpRequest.value as any
++    if (isNative(current) && Array.isArray(snapshot.invalidated) && snapshot.invalidated.includes(current.id)) {
++      showMcpPopup.value = false
++      mcpRequest.value = null
++    }
++    else if (isNative(current) && current.native.status !== 'received') {
++      const live = nativeQuestions.find(q => q.id === current.id)
++      if (live) {
++        mcpRequest.value = { ...nativeDisplay(live), native: { ...nativeDisplay(live).native, error: current.native.error } }
++      }
++      else if (current.id !== nativeSendingId) {
++        showMcpPopup.value = false
++        mcpRequest.value = null
++      }
++    }
++    for (const q of nativeQuestions) {
++      if (q.id !== resolveRequestId(mcpRequest.value) && !nativeDrafts.has(q.id)
++        && !locallyHiddenNative.has(q.id) && !pendingDialogs.some(p => p.id === q.id)) {
++        pendingDialogs.push(q)
++      }
++    }
++    void pumpDialogs()
++  }
++
++  async function hideNative(request: any) {
++    locallyHiddenNative.add(request.id)
++    nativeDrafts.delete(request.id)
++    for (let i = pendingDialogs.length - 1; i >= 0; i--) {
++      if (pendingDialogs[i].id === request.id)
++        pendingDialogs.splice(i, 1)
++    }
++    // Native cancellation hides one question; it never sends an empty answer or cancels CLI.
++    await invoke('send_mcp_response', { response: 'CANCELLED', requestId: request.id })
++    if (resolveRequestId(mcpRequest.value) === request.id) {
++      showMcpPopup.value = false
++      mcpRequest.value = null
++    }
++    void pumpDialogs()
++  }
++
++  async function handleNativeResponse(request: any, response: any) {
++    if (response?.metadata?.source !== 'codex_native')
++      return
++    const key = beginRequestResolution(request)
++    if (!key)
++      return
++    try {
++      const draft = { userInput: String(response.user_input || ''), selectedOptions: response.selected_options || [] }
++      nativeDrafts.set(request.id, draft)
++      const group = nativeQuestions.filter(q => q.native.group_id === request.native.group_id && !locallyHiddenNative.has(q.id))
++      if (!group.some(q => q.id === request.id))
++        return
++      const remaining = group.find(q => !nativeDrafts.has(q.id))
++      if (remaining) {
++        showMcpPopup.value = false
++        mcpRequest.value = null
++        await pumpDialogs()
++        return
++      }
++      const answers = group.map((q) => {
++        const d = nativeDrafts.get(q.id)!
++        return { id: q.id, answer: [...d.selectedOptions, d.userInput].filter(Boolean).join('\n') }
++      })
++      nativeSendingId = request.id
++      mcpRequest.value = { ...request, native: { ...request.native, status: 'sending', draft, error: '' } }
++      // Rust returns only after remote turn/steer ACK, not after local oneshot delivery.
++      await invoke('send_mcp_response', { requestId: request.id, response: { ...response, native_answers: answers, native_retry: Boolean(response.native_retry) } })
++      for (const q of group)
++        nativeDrafts.delete(q.id)
++      if (resolveRequestId(mcpRequest.value) === request.id)
++        mcpRequest.value = { ...request, native: { ...request.native, status: 'received', draft, error: '' } }
++    }
++    catch (error) {
++      const live = nativeQuestions.find(q => q.id === request.id)
++      if (live && !locallyHiddenNative.has(request.id)) {
++        mcpRequest.value = { ...nativeDisplay(live), native: { ...nativeDisplay(live).native, status: String(error).includes('结果未知') ? 'unknown' : 'waiting', error: String(error) } }
++      }
++      else if (resolveRequestId(mcpRequest.value) === request.id) {
++        mcpRequest.value = null
++        showMcpPopup.value = false
++      }
++    }
++    finally {
++      nativeSendingId = null
++      finishRequestResolution(key)
++      void pumpDialogs()
++    }
++  }
+ 
+   function beginRequestResolution(request: any, response?: any): string | null {
+     const key = resolveRequestId(request) ?? resolveRequestId(response) ?? '__unrouted_mcp_request__'
+@@ -401,6 +548,8 @@ export function useMcpHandler() {
+   }
+ 
+   function resolveProjectPath(request: any): string | null {
++    if (isNative(request))
++      return request.project_path || null
+     if (String(request?.id || '').startsWith('cross-'))
+       return null
+     const candidate = request?.project_path ?? request?.projectPath
+@@ -421,14 +570,74 @@ export function useMcpHandler() {
+    * 统一的MCP响应处理
+    */
+   async function handleMcpResponse(response: any) {
++    const submission = isDesktopMcpSubmission(response) ? response : null
++    if (submission && !isDesktopSubmissionCurrent(mcpRequest.value, submission.request)) {
++      submission.settled()
++      return
++    }
++    if (isNative(mcpRequest.value))
++      return handleNativeResponse(mcpRequest.value, response)
+     crossDeviceSendError.value = ''
+     mcpDeliveryError.value = ''
+-    const request = mcpRequest.value as any
++    const request = submission ? submission.request : mcpRequest.value as any
+     const resolutionKey = beginRequestResolution(request, response)
+-    if (!resolutionKey)
++    if (!resolutionKey) {
++      submission?.settled()
+       return
++    }
+     const projectPath = resolveProjectPath(request)
+     const requestId = resolveRequestId(request)
++    if (submission) {
++      const isCurrent = () => isDesktopSubmissionCurrent(mcpRequest.value, request)
++      try {
++        await runDesktopMcpSubmission({
++          // Hide this same native window in both resident and standalone modes.
++          // Retain its request and mounted form until the real send ACK.
++          dismiss: () => invoke('dismiss_standalone_mcp_window'),
++          isCurrent,
++          prepare: () => submission.prepare(isCurrent),
++          deliver: async (preparedResponse) => {
++            const timelineRouteId = await resolveConversationRouteIdWithFallback(request, projectPath)
++            if (!isCurrent() || resolveRequestId(preparedResponse) !== requestId)
++              throw new Error('回复请求归属已变化，未发送')
++            await invoke('send_mcp_response', { response: preparedResponse, projectPath, requestId, timelineRouteId })
++          },
++          accepted: () => {
++            if (isCurrent()) {
++              showMcpPopup.value = false
++              mcpRequest.value = null
++            }
++          },
++          cleanup: async () => {
++            await publishCompletedMcpRequest(requestId, request?.project_path ?? request?.projectPath)
++            if (!mcpRequest.value) {
++              clearActiveMcpFatalContext()
++              if (isMcpProcess.value)
++                await invoke('exit_app')
++            }
++          },
++          failed: async (error) => {
++            console.error('MCP响应处理失败:', error)
++            mcpDeliveryError.value = `发送未确认成功：${String(error)}`
++            if (String(requestId || '').startsWith('cross-'))
++              crossDeviceSendError.value = String(error)
++            // No remount/resetForm: text, options and attachments stay in place.
++            const window = getCurrentWindow()
++            await window.show()
++            const shouldFocus = await shouldFocusPopupOnShow()
++            if (isCurrent() && shouldFocus)
++              await window.setFocus()
++          },
++          cleanupFailed: error => console.error('MCP回复已确认，收尾失败:', error),
++        })
++      }
++      finally {
++        submission.settled()
++        finishRequestResolution(resolutionKey)
++        void pumpDialogs()
++      }
++      return
++    }
+     let dismissal: ImmediateMcpDismissal | null = null
+     let submitted = false
+     try {
+@@ -451,15 +660,17 @@ export function useMcpHandler() {
+     }
+     catch (error) {
+       console.error('MCP响应处理失败:', error)
+-      if (!submitted)
++      if (!submitted) {
+         mcpDeliveryError.value = MCP_DELIVERY_FAILURE
+-      if (String(requestId || '').startsWith('cross-'))
+-        crossDeviceSendError.value = String(error)
+-      if (dismissal)
+-        await restoreMcpUiAfterFailure(dismissal)
++        if (String(requestId || '').startsWith('cross-'))
++          crossDeviceSendError.value = String(error)
++        if (dismissal)
++          await restoreMcpUiAfterFailure(dismissal)
++      }
+     }
+     finally {
+       finishRequestResolution(resolutionKey)
++      void pumpDialogs()
+     }
+   }
+ 
+@@ -468,6 +679,8 @@ export function useMcpHandler() {
+    */
+   async function handleMcpCloseCurrentDialog() {
+     const request = mcpRequest.value as any
++    if (isNative(request))
++      return hideNative(request)
+     const requestId = resolveRequestId(request)
+     if (!request || !requestId)
+       return
+@@ -491,6 +704,8 @@ export function useMcpHandler() {
+    */
+   async function handleMcpCancel() {
+     const request = mcpRequest.value as any
++    if (isNative(request))
++      return hideNative(request)
+     const resolutionKey = beginRequestResolution(request)
+     if (!resolutionKey)
+       return
+@@ -521,6 +736,7 @@ export function useMcpHandler() {
+     }
+     finally {
+       finishRequestResolution(resolutionKey)
++      void pumpDialogs()
+     }
+   }
+ 
+@@ -563,7 +779,7 @@ export function useMcpHandler() {
+     // 获取Telegram配置，检查是否需要隐藏前端弹窗
+     let shouldShowFrontendPopup = true
+     try {
+-      const telegramConfig = await invoke('get_telegram_config')
++      const telegramConfig = isNative(request) ? null : await invoke('get_telegram_config')
+       // 如果Telegram启用且配置了隐藏前端弹窗，则不显示前端弹窗
+       if (telegramConfig && (telegramConfig as any).enabled && (telegramConfig as any).hide_frontend_popup) {
+         shouldShowFrontendPopup = false
+@@ -576,6 +792,8 @@ export function useMcpHandler() {
+     }
+ 
+     // 根据配置决定是否显示前端弹窗
++    if (isNative(request) && (!nativeQuestions.some(q => q.id === request.id) || locallyHiddenNative.has(request.id)))
++      return
+     if (shouldShowFrontendPopup) {
+       const shouldForceShow = !!(routedRequest?.loop_active || routedRequest?.force_popup)
+       // 循环检查点 / loop 完成交付：强制取消静音并显示窗口
+@@ -639,6 +857,9 @@ export function useMcpHandler() {
+     }
+     else {
+       console.log('🔕 跳过前端弹窗显示，仅使用Telegram交互')
++      // Keep the old request's route occupied while Telegram handles its hidden dialog.
++      mcpRequest.value = routedRequest
++      showMcpPopup.value = false
+     }
+ 
+     // 播放音频通知（静音时跳过）
+@@ -666,7 +887,7 @@ export function useMcpHandler() {
+ 
+     // 启动Telegram同步（无论是否显示弹窗都启动）
+     try {
+-      if (request?.message) {
++      if (request?.message && !isNative(request)) {
+         await invoke('start_telegram_sync', {
+           message: request.message,
+           predefinedOptions: request.predefined_options || [],
+@@ -709,8 +930,24 @@ export function useMcpHandler() {
+    */
+   async function setupMcpEventListener() {
+     try {
++      const context = await resolveMcpLaunchContext()
++      const resident = !context.isStandaloneMode && context.kind === 'normal'
++      if (resident && getCurrentWindow().label === 'main') {
++        await listen('codex-native-questions', event => reconcileNative(event.payload))
++        await invoke('ack_mcp_request_ready', { requestId: 'iterate-codex-native-ready-v1' })
++      }
+       await listen('mcp-request', (event) => {
+         const payload = event.payload as any
++        if (resident) {
++          // ACK immediately even while another source occupies the popup; the IPC caller waits.
++          void invoke('ack_mcp_request_ready', { requestId: resolveRequestId(payload), projectPath: payload?.project_path })
++          if (resolveRequestId(mcpRequest.value) !== resolveRequestId(payload)
++            && !pendingDialogs.some(p => resolveRequestId(p) === resolveRequestId(payload))) {
++            pendingDialogs.push(payload)
++            void pumpDialogs()
++          }
++          return
++        }
+         const currentRequest = mcpRequest.value as any
+         const currentWindowRequestId = resolveRequestId(currentRequest)
+         const targetRequestId = resolveRequestId(payload)
+@@ -749,6 +986,8 @@ export function useMcpHandler() {
+    * 模拟点击“继续”按钮
+    */
+   async function handleMcpContinue(source = 'web_bridge_continue') {
++    if (isNative(mcpRequest.value))
++      return
+     try {
+       const { continuePrompt } = await getReplyPrompts()
+ 
+@@ -772,6 +1011,8 @@ export function useMcpHandler() {
+    * 模拟点击“循环”按钮
+    */
+   async function handleMcpLoopReply(source = 'web_bridge_loop_start', userInput: string = '') {
++    if (isNative(mcpRequest.value))
++      return
+     try {
+       const { loopPrompt } = await getReplyPrompts()
+       const trimmedUserInput = userInput.trim()
+@@ -793,6 +1034,8 @@ export function useMcpHandler() {
+   }
+ 
+   async function handleMcpEnhance(userInput: string = '') {
++    if (isNative(mcpRequest.value))
++      return
+     try {
+       const trimmedUserInput = userInput.trim()
+       if (!trimmedUserInput)
+diff --git a/src/frontend/services/bridgeRequestClosure.ts b/src/frontend/services/bridgeRequestClosure.ts
+index 305691e..bb3c668 100644
+--- a/src/frontend/services/bridgeRequestClosure.ts
++++ b/src/frontend/services/bridgeRequestClosure.ts
+@@ -2,12 +2,23 @@ import { invoke } from '@tauri-apps/api/core'
+ 
+ /** Tell Bridge that a delivered MCP request has finished before its window exits. */
+ export async function publishCompletedMcpRequest(requestId: unknown, rawProjectPath: unknown): Promise<boolean> {
++  return publishClosedMcpRequest(requestId, rawProjectPath)
++}
++
++/** Close one exact MCP request; a close notification is not a delivery receipt. */
++export async function publishClosedMcpRequest(
++  requestId: unknown,
++  rawProjectPath: unknown,
++  isCurrent: () => boolean = () => true,
++): Promise<boolean> {
+   const request_id = typeof requestId === 'string' ? requestId.trim() : ''
+   const project_path = typeof rawProjectPath === 'string' ? rawProjectPath.trim() : ''
+   if (!request_id || !project_path || project_path === '.' || project_path.toLowerCase() === 'unknown')
+     return false
+ 
+   for (let attempt = 0; attempt < 3; attempt++) {
++    if (!isCurrent())
++      return false
+     try {
+       await invoke('send_to_web_bridge', {
+         message: {
+@@ -24,7 +35,7 @@ export async function publishCompletedMcpRequest(requestId: unknown, rawProjectP
+     }
+     catch (error) {
+       if (attempt === 2) {
+-        console.warn('[MCP] 发布已完成请求的关闭状态失败:', error)
++        console.warn('[MCP] 发布请求的关闭状态失败:', error)
+         return false
+       }
+       await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+diff --git a/src/frontend/types/popup.d.ts b/src/frontend/types/popup.d.ts
+index 34b0382..5f926b7 100644
+--- a/src/frontend/types/popup.d.ts
++++ b/src/frontend/types/popup.d.ts
+@@ -4,6 +4,16 @@ export type { PopupTextSelection, PopupTextSelectionSource } from '../utils/popu
+ 
+ export interface McpRequest {
+   id: string
++  source?: 'codex_native'
++  native?: {
++    group_id: string
++    index: number
++    question_item_id: string
++    status: 'waiting' | 'sending' | 'unknown' | 'received'
++    remaining?: number
++    draft?: { userInput: string, selectedOptions: string[] }
++    error?: string
++  }
+   message: string
+   predefined_options?: string[]
+   is_markdown?: boolean
+@@ -12,6 +22,7 @@ export interface McpRequest {
+   project_path?: string
+   codex_home?: string
+   codex_thread_id?: string
++  codex_thread_provenance?: 'caller_meta' | 'explicit_argument'
+   codex_deeplink?: string
+   conversation_title?: string
+   checkpoint_id?: string
+diff --git a/src/rust/app/builder.rs b/src/rust/app/builder.rs
+index a1d3e10..53e6a51 100644
+--- a/src/rust/app/builder.rs
++++ b/src/rust/app/builder.rs
+@@ -746,6 +746,7 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
+             build_mcp_continue_response,
+             create_test_popup,
+             // 对话树命令
++            list_native_conversation_histories,
+             create_conversation_tree,
+             add_conversation_node,
+             ensure_conversation_assistant_node,
+diff --git a/src/rust/app/setup.rs b/src/rust/app/setup.rs
+index 8f3caba..49054d3 100644
+--- a/src/rust/app/setup.rs
++++ b/src/rust/app/setup.rs
+@@ -1529,6 +1529,7 @@ pub async fn setup_application(app_handle: &AppHandle) -> Result<(), String> {
+     // 这些服务由主 app 进程管理。子进程抢占 8080 端口会导致 iOS WS 断连。
+     let args: Vec<String> = std::env::args().collect();
+     let is_standalone = is_standalone_process();
++    // Native CLI questions are owned by the successfully bound Bridge daemon.
+     instance_debug_log(
+         "[setup-begin]",
+         format!("is_standalone={}, args={:?}", is_standalone, args),
+diff --git a/src/rust/conversation/commands.rs b/src/rust/conversation/commands.rs
+index 76688da..71de2e7 100644
+--- a/src/rust/conversation/commands.rs
++++ b/src/rust/conversation/commands.rs
+@@ -4,6 +4,12 @@ use serde::Serialize;
+ use std::sync::Arc;
+ use tauri::{AppHandle, Emitter, State};
+ 
++#[tauri::command]
++pub async fn list_native_conversation_histories() -> Result<Vec<super::manager::NativeHistorySession>, String> {
++    let manager = ConversationManager::new_with_forced_persistence();
++    Ok(manager.list_native_history_sessions().await)
++}
++
+ #[tauri::command]
+ pub async fn migrate_timeline_image_storage(
+     confirmation: String,
+@@ -219,7 +225,13 @@ pub async fn get_conversation_path(
+             "node_id": node_id,
+         }),
+     );
+-    let path = manager.get_node_path(&tree_id, &node_id).await;
++    let mut path = manager.get_node_path(&tree_id, &node_id).await;
++    if path.is_err() {
++        let persisted = ConversationManager::new_with_forced_persistence();
++        if persisted.list_native_history_sessions().await.iter().any(|session| session.tree_id == tree_id) {
++            path = persisted.get_node_path(&tree_id, &node_id).await;
++        }
++    }
+     match &path {
+         Ok(nodes) => {
+             append_timeline_debug_log(
+diff --git a/src/rust/cross_device.rs b/src/rust/cross_device.rs
+index b0d20cc..c1d67a2 100644
+--- a/src/rust/cross_device.rs
++++ b/src/rust/cross_device.rs
+@@ -89,6 +89,19 @@ fn settings() -> Result<Settings> {
+     Ok(value)
+ }
+ 
++// Leases are the existing liveness authority. Filter them before opening old
++// registrations or their locks: history grows, but pending windows stay small.
++fn live_registration_keys(dir: &Path) -> Vec<String> {
++    fs::read_dir(dir.join("leases")).into_iter().flatten().flatten()
++        .filter_map(|entry| {
++            let key = entry.file_name().to_str()?.to_owned();
++            uuid::Uuid::parse_str(&key).ok()?;
++            let age = entry.metadata().ok()?.modified().ok()?.elapsed().ok()?;
++            (age < Duration::from_secs(15)).then_some(key)
++        })
++        .collect()
++}
++
+ // Display-only computer identity. Reading it never creates settings, credentials,
+ // or a pairing, and it must never be replaced with the replying phone's identity.
+ pub(crate) fn local_computer_identity() -> (Option<String>, Option<String>) {
+@@ -1104,13 +1117,10 @@ async fn snapshot(
+     }
+     let config = settings().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+     let mut requests = Vec::new();
+-    if let Ok(entries) = fs::read_dir(
+-        directory()
+-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+-            .join("requests"),
+-    ) {
+-        for entry in entries.flatten() {
+-            if let Ok(reg) = read_json::<Registration>(&entry.path()) {
++    let dir = directory().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
++    if config.enabled {
++        for key in live_registration_keys(&dir) {
++            if let Ok(reg) = read_json::<Registration>(&dir.join("requests").join(format!("{key}.json"))) {
+                 if config.enabled && reg.published && reg.active() && !reg.response_file.exists()
+                     && text_mirror_supported(&reg.request) {
+                     requests.push(
+@@ -1134,8 +1144,22 @@ async fn sync_open_windows(
+ ) -> std::result::Result<Json<Value>, StatusCode> {
+     if !authorized(&headers, &state) { return Err(StatusCode::UNAUTHORIZED); }
+     let _admission = hub_transport::submission_guard(false).map_err(|_|StatusCode::CONFLICT)?;
++    let dir = directory().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
++    if transport::route_key().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? != state.revision
++        || !settings().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.enabled {
++        return Err(StatusCode::CONFLICT);
++    }
++    let needs_publication = live_registration_keys(&dir).iter().any(|key| {
++        load_registration(key).is_ok_and(|reg| !reg.published && reg.active()
++            && !reg.response_file.exists() && text_mirror_supported(&reg.request))
++    });
++    if !needs_publication {
++        // Cloud publication holds connection.lock while awaiting network ACKs.
++        // Reading already-published windows must not wait for unrelated writes.
++        // A newly registered deferred window is picked up by the next poll.
++        return snapshot(State(state), headers).await;
++    }
+     {
+-        let dir = directory().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+         let _guard = lock(&dir, "connection.lock").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+         if transport::route_key().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? != state.revision {
+             return Err(StatusCode::CONFLICT);
+@@ -1145,22 +1169,22 @@ async fn sync_open_windows(
+         }
+         // Separate deferred records are invisible to old daemons. Read the old
+         // layout as well so already registered source windows remain usable.
+-        for folder in ["requests", "deferred-requests"] {
+-            if let Ok(entries) = fs::read_dir(dir.join(folder)) {
+-                for entry in entries.flatten() {
+-                    if let Ok(reg) = read_json::<Registration>(&entry.path()) {
+-                        let _request=reg.request_lock().map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+-                        let Ok(mut reg)=load_registration(&reg.key) else {continue};
+-                        if !reg.published && reg.active() && !reg.response_file.exists()
+-                            && text_mirror_supported(&reg.request) {
+-                            reg.published = true;
+-                            atomic_json(&reg.path().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?, &reg)
+-                                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+-                            if folder == "deferred-requests" {
+-                                fs::remove_file(entry.path()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+-                            }
+-                        }
+-                    }
++        for key in live_registration_keys(&dir) {
++            let Ok(reg) = load_registration(&key) else { continue };
++            // Published and completed records need no publication lock.
++            // Recheck under the lock before changing any live record.
++            if reg.published || !reg.active() || reg.response_file.exists()
++                || !text_mirror_supported(&reg.request) { continue; }
++            let _request = reg.request_lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
++            let Ok(mut reg) = load_registration(&key) else { continue };
++            if !reg.published && reg.active() && !reg.response_file.exists()
++                && text_mirror_supported(&reg.request) {
++                reg.published = true;
++                atomic_json(&reg.path().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?, &reg)
++                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
++                let deferred = dir.join("deferred-requests").join(format!("{key}.json"));
++                if deferred.exists() {
++                    fs::remove_file(deferred).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                 }
+             }
+         }
+@@ -2083,6 +2107,51 @@ mod tests {
+         assert!(temp.path().join("dismissed").join(&key).exists());
+     }
+ 
++    #[tokio::test]
++    async fn window_sync_skips_history_and_does_not_lock_published_requests() {
++        let temp = tempfile::tempdir().unwrap();
++        let previous = std::env::var_os("ITERATE_CROSS_DEVICE_DIR");
++        std::env::set_var("ITERATE_CROSS_DEVICE_DIR", temp.path());
++        atomic_json(&temp.path().join("settings.json"),
++            &Settings { device_id: "source".into(), enabled: true }).unwrap();
++        let state = Arc::new(Broker { token: "test-token".into(), revision: transport::route_key().unwrap(),
++            device_id: "source".into(), network_ready: std::sync::atomic::AtomicBool::new(true) });
++        let mut headers = HeaderMap::new();
++        headers.insert("authorization", "Bearer test-token".parse().unwrap());
++        let request_file = temp.path().join("popup.json");
++        fs::write(&request_file, b"{}").unwrap();
++        let live = Registration { key: uuid::Uuid::new_v4().to_string(), origin_device_id: "source".into(),
++            origin_name: "source".into(), origin_platform: None, request: json!({"message":"pending"}),
++            request_file, response_file: temp.path().join("response.json"), published: true };
++        atomic_json(&live.path().unwrap(), &live).unwrap();
++        live.renew();
++        // A published request must remain visible even when its write lock
++        // cannot be opened (e.g. another reply path is finalizing it).
++        fs::create_dir_all(temp.path().join("locks").join(&live.key)).unwrap();
++        // Make the write-route lock unavailable without a blocking test: a
++        // read-only pull must succeed even when it cannot open this lock.
++        fs::create_dir_all(temp.path().join("connection.lock")).unwrap();
++        for index in 0..64 {
++            let stale = Registration { key: uuid::Uuid::new_v4().to_string(), published: index % 2 == 0, ..live.clone() };
++            atomic_json(&stale.path().unwrap(), &stale).unwrap();
++            if index % 3 != 0 {
++                stale.renew();
++                File::options().write(true).open(temp.path().join("leases").join(&stale.key)).unwrap()
++                    .set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::UNIX_EPOCH)).unwrap();
++            }
++            fs::create_dir_all(temp.path().join("locks").join(&stale.key)).unwrap();
++        }
++        let pulled = sync_open_windows(State(state.clone()), headers.clone()).await.unwrap().0;
++        assert_eq!(pulled["requests"].as_array().unwrap().len(), 1);
++        assert_eq!(pulled["requests"][0]["key"], live.key);
++        assert_eq!(snapshot(State(state), headers).await.unwrap().0["requests"], pulled["requests"]);
++        // History is retained; skipping old work is not garbage collection.
++        assert_eq!(fs::read_dir(temp.path().join("requests")).unwrap().count(), 33);
++        assert_eq!(fs::read_dir(temp.path().join("deferred-requests")).unwrap().count(), 32);
++        match previous { Some(value) => std::env::set_var("ITERATE_CROSS_DEVICE_DIR", value),
++            None => std::env::remove_var("ITERATE_CROSS_DEVICE_DIR") }
++    }
++
+     #[tokio::test]
+     async fn offline_windows_are_published_only_by_authenticated_pulls() {
+         let temp = tempfile::tempdir().unwrap();
+diff --git a/src/rust/cross_device/hub_transport.rs b/src/rust/cross_device/hub_transport.rs
+index 5b017fb..c66bf69 100644
+--- a/src/rust/cross_device/hub_transport.rs
++++ b/src/rust/cross_device/hub_transport.rs
+@@ -523,9 +523,7 @@ impl Client {
+         Ok(())
+     }
+ 
+-    async fn jobs(&self,next:&Value)->Result<()> {
+-        for (key,query) in [("jobs",false),("reconcile",true)] {
+-            for job in next[key].as_array().into_iter().flatten(){
++    async fn process_job(&self,job:&Value,query:bool)->Result<()> {
+                 self.progress.enter("job_dispatch");
+                 if job["kind"]=="action" {self.action(job,query).await?;}
+                 else {
+@@ -549,9 +547,22 @@ impl Client {
+                     }
+                     self.call("/source/respond",Some(&json!({"job_id":job["id"],"epoch":job["epoch"],"response":response}))).await?;
+                 }
++        Ok(())
++    }
++
++    async fn jobs(&self,next:&Value)->Result<()> {
++        let mut incomplete = false;
++        for (key,query) in [("jobs",false),("reconcile",true)] {
++            for job in next[key].as_array().into_iter().flatten(){
++                // An unknown old RPC must remain unknown, but it must not
++                // prevent independent durable replies later in this batch.
++                if self.process_job(job,query).await.is_err() {
++                    incomplete = true;
++                }
+             }
+         }
+-        Ok(())
++        // Preserve the drain/barrier guard: partial success is not quiescence.
++        if incomplete { Err("hub_jobs_incomplete".into()) } else { Ok(()) }
+     }
+ 
+     async fn process_next(&self, dir: &Path, next: &Value) -> Result<()> {
+@@ -634,6 +645,63 @@ async fn run_async(watchdog_limit: Option<Duration>) -> Result<()> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++
++    #[tokio::test]
++    async fn failed_jobs_do_not_starve_later_durable_receipts_or_report_quiescence() {
++        use axum::{extract::State, routing::post, Json};
++        use std::sync::{Arc, Mutex};
++        struct RestoreEnv(Option<std::ffi::OsString>);
++        impl Drop for RestoreEnv {
++            fn drop(&mut self) {
++                match &self.0 {
++                    Some(value) => std::env::set_var("ITERATE_CROSS_DEVICE_DIR",value),
++                    None => std::env::remove_var("ITERATE_CROSS_DEVICE_DIR"),
++                }
++            }
++        }
++        let dir=tempfile::tempdir().unwrap();
++        let _restore=RestoreEnv(std::env::var_os("ITERATE_CROSS_DEVICE_DIR"));
++        std::env::set_var("ITERATE_CROSS_DEVICE_DIR",dir.path());
++        let received=Arc::new(Mutex::new(Vec::<Value>::new()));
++        let app=axum::Router::new().route("/source/respond",post(
++            |State(received):State<Arc<Mutex<Vec<Value>>>>,Json(body):Json<Value>|async move {
++                let status=if body["job_id"]=="http-failure" {
++                    axum::http::StatusCode::SERVICE_UNAVAILABLE
++                }else{axum::http::StatusCode::OK};
++                received.lock().unwrap().push(body);
++                (status,Json(json!({"ok":true})))
++            })).with_state(received.clone());
++        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let endpoint=format!("http://{}",listener.local_addr().unwrap());
++        let server=tokio::spawn(async move{axum::serve(listener,app).await.unwrap()});
++        let client=Client{config:HubConfig{endpoint,device_id:"fixture".into(),
++            token_env:"TEST_UNUSED_TOKEN".into(),ca_certificate:None},
++            token:"fixture-token".into(),session:"fixture-session".into(),
++            http:reqwest::Client::builder().no_proxy().build().unwrap(),progress:Progress::new()};
++        let reply=json!({"events":[{"message_type":"fixture_receipt","payload":{"value":"original"}}]});
++        for id in ["durable-reply","http-failure"] {
++            atomic_json(&dir.path().join("hub-rpc-receipts").join(format!("{}.json",digest(id))),&reply).unwrap();
++        }
++        let good=json!({"id":"durable-reply","kind":"sync","epoch":2,"payload":{"operation":"sync"}});
++        for (queue,bad,expected_calls) in [
++            ("reconcile",json!({"id":"unknown-old-rpc","kind":"open_codex","epoch":2,"payload":{"operation":"open_codex"}}),1),
++            ("jobs",json!({"id":"invalid-action","kind":"action","epoch":2,"payload":{"registration_key":"missing-binding"}}),1),
++            ("reconcile",json!({"id":"http-failure","kind":"sync","epoch":2,"payload":{"operation":"sync"}}),2),
++        ] {
++            received.lock().unwrap().clear();
++            let mut next=json!({"jobs":[],"reconcile":[]});
++            next[queue]=json!([bad,good]);
++            assert_eq!(client.jobs(&next).await.unwrap_err(),"hub_jobs_incomplete");
++            let calls=received.lock().unwrap();
++            assert_eq!(calls.len(),expected_calls);
++            assert_eq!(calls.last().unwrap(),&json!({"job_id":"durable-reply","epoch":2,"response":reply}));
++            assert!(!dir.path().join("hub-rpc-receipts").join(format!("{}.json",digest("unknown-old-rpc"))).exists(),
++                "unknown RPC must not be replayed or falsely acknowledged");
++        }
++        assert!(client.jobs(&json!({"jobs":[],"reconcile":[good]})).await.is_ok());
++        server.abort();
++    }
++
+     #[test]
+     fn source_loop_watchdog_child_fixture() {
+         let Ok(mode) = std::env::var("ITERATE_SOURCE_WATCHDOG_FIXTURE") else { return; };
+diff --git a/src/rust/mcp/mod.rs b/src/rust/mcp/mod.rs
+index 69f5ed8..af12428 100644
+--- a/src/rust/mcp/mod.rs
++++ b/src/rust/mcp/mod.rs
+@@ -1,5 +1,6 @@
+ pub mod codex_deeplink;
+ pub mod codex_home;
++pub mod conversation_title;
+ pub mod commands;
+ pub mod handlers;
+ pub mod server;
+diff --git a/src/rust/tunnel/commands.rs b/src/rust/tunnel/commands.rs
+index 2424a6f..3dea944 100644
+--- a/src/rust/tunnel/commands.rs
++++ b/src/rust/tunnel/commands.rs
+@@ -1137,7 +1137,7 @@ pub fn configured_formal_mobile_route() -> Option<FormalMobileRouteConfig> {
+         if route.schema_version == 1
+             && matches!(
+                 route.transport.as_str(),
+-                "cloudflare_named_tunnel" | "aliyun_ssh_reverse_tunnel"
++                "cloudflare_named_tunnel" | "aliyun_ssh_reverse_tunnel" | "cloud_hub"
+             )
+             && normalize_formal_mobile_route_base_url(&route.transport, &route.base_url).is_ok()
+         {
+@@ -1195,9 +1195,9 @@ fn unconfigured_formal_mobile_route_status() -> FormalMobileRouteStatus {
+ 
+ async fn probe_formal_mobile_route(route: &FormalMobileRouteConfig) -> FormalMobileRouteStatus {
+     let checked_at = chrono::Utc::now().to_rfc3339();
+-    let origin_healthy = manager::check_origin_health().await.unwrap_or(false);
+-    let endpoint_identity_ok =
+-        origin_healthy && manager::public_endpoint_proves_current_install(&route.base_url).await;
++    let origin_healthy = route.transport=="cloud_hub" || manager::check_origin_health().await.unwrap_or(false);
++    let endpoint_identity_ok = if route.transport=="cloud_hub" {probe_cloud_hub(&route.base_url).await}
++        else {origin_healthy && manager::public_endpoint_proves_current_install(&route.base_url).await};
+     let repair_reason = if endpoint_identity_ok {
+         None
+     } else if !origin_healthy {
+@@ -1230,6 +1230,17 @@ pub async fn get_formal_mobile_route_status() -> FormalMobileRouteStatus {
+     }
+ }
+ 
++async fn probe_cloud_hub(base_url:&str)->bool {
++    let Ok(client)=build_cloudflare_probe_client() else{return false;};
++    let Ok(response)=client.get(format!("{base_url}/health")).send().await else{return false;};
++    if !response.status().is_success(){return false;}
++    let Ok(value)=response.json::<serde_json::Value>().await else{return false;};
++    if value["service"]!="iterate-hub" || value["protocol"]!=1 || value["status"]!="ok"{return false;}
++    let endpoint=format!("{}/ws",base_url.replacen("https://","wss://",1));
++    matches!(tokio::time::timeout(std::time::Duration::from_secs(5),connect_async(&endpoint)).await,
++        Ok(Err(WsError::Http(response))) if response.status().as_u16()==401)
++}
++
+ pub async fn register_formal_mobile_route(
+     transport: &str,
+     base_url: &str,
+@@ -1237,7 +1248,7 @@ pub async fn register_formal_mobile_route(
+ ) -> Result<FormalMobileRouteStatus, String> {
+     if !matches!(
+         transport,
+-        "cloudflare_named_tunnel" | "aliyun_ssh_reverse_tunnel"
++        "cloudflare_named_tunnel" | "aliyun_ssh_reverse_tunnel" | "cloud_hub"
+     ) {
+         return Err("formal_route_transport_not_supported".to_string());
+     }
+@@ -1248,10 +1259,10 @@ pub async fn register_formal_mobile_route(
+         _ => return Err("formal_route_source_invalid".to_string()),
+     };
+     let base_url = normalize_formal_mobile_route_base_url(transport, base_url)?;
+-    if !manager::check_origin_health().await? {
++    if transport!="cloud_hub" && !manager::check_origin_health().await? {
+         return Err("bridge_unhealthy".to_string());
+     }
+-    if !manager::public_endpoint_proves_current_install(&base_url).await {
++    if !(if transport=="cloud_hub"{probe_cloud_hub(&base_url).await}else{manager::public_endpoint_proves_current_install(&base_url).await}) {
+         return Err("endpoint_identity_mismatch".to_string());
+     }
+ 
+diff --git a/src/rust/ui/commands.rs b/src/rust/ui/commands.rs
+index 3814897..fed7a95 100644
+--- a/src/rust/ui/commands.rs
++++ b/src/rust/ui/commands.rs
+@@ -78,14 +78,48 @@ fn restore_standalone_previous_frontmost_application() -> Result<bool, String> {
+ }
+ 
+ #[tauri::command]
+-pub fn dismiss_standalone_mcp_window(app: AppHandle) -> Result<(), String> {
++pub async fn dismiss_standalone_mcp_window(app: AppHandle) -> Result<(), String> {
+     let window = app
+         .get_webview_window("main")
+         .ok_or_else(|| "standalone MCP window not found".to_string())?;
++    let target = window.clone();
++    let (completed, result) = tokio::sync::oneshot::channel();
++    window
++        .run_on_main_thread(move || {
++            let _ = completed.send(hide_mcp_window_on_main_thread(&target));
++        })
++        .map_err(|error| format!("failed to schedule MCP window dismissal: {error}"))?;
++    result
++        .await
++        .map_err(|error| format!("MCP window dismissal was not confirmed: {error}"))?
++}
++
++fn hide_mcp_window_on_main_thread(window: &tauri::WebviewWindow) -> Result<(), String> {
+     window
+         .hide()
+         .map_err(|error| format!("failed to hide standalone MCP window: {error}"))?;
+ 
++    #[cfg(target_os = "windows")]
++    {
++        use windows_sys::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
++
++        // center_window uses SW_SHOWNOACTIVATE for a non-focusing popup. That
++        // native show does not update Tao's VISIBLE flag, so hide() alone can
++        // acknowledge a no-op. Hide the same HWND and confirm before sending.
++        let hwnd = window
++            .hwnd()
++            .map_err(|error| format!("failed to resolve MCP window handle: {error}"))?;
++        unsafe { ShowWindow(hwnd.0, SW_HIDE) };
++        if unsafe { IsWindowVisible(hwnd.0) } != 0 {
++            return Err("MCP window remained visible; response was not sent".to_string());
++        }
++        log::info!(
++            "[MCP dismissal] pid={} window={} hidden=true",
++            std::process::id(),
++            window.label()
++        );
++    }
++
+     #[cfg(target_os = "macos")]
+     if let Err(error) = restore_standalone_previous_frontmost_application() {
+         log::warn!("failed to restore application after MCP dismissal: {error}");
+@@ -2050,7 +2084,10 @@ pub fn read_mcp_request(file_path: String) -> Result<serde_json::Value, String>
+                 return Err("文件内容为空".to_string());
+             }
+             match serde_json::from_str(&content) {
+-                Ok(json) => Ok(json),
++                Ok(mut json) => {
++                    crate::mcp::conversation_title::normalize_local_request(&mut json);
++                    Ok(json)
++                },
+                 Err(e) => Err(format!("解析JSON失败: {}", e)),
+             }
+         }
+@@ -2188,15 +2225,13 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
+ 
+ #[tauri::command]
+ pub async fn open_local_path(
++    app: AppHandle,
+     path: String,
+     project_path: String,
+     prefer_editor: Option<bool>,
+ ) -> Result<(), String> {
+-    use std::process::Command;
+-
+     let target = resolve_local_open_target(&path, &project_path)?;
+     let metadata = std::fs::metadata(&target.path).map_err(|e| format!("读取文件失败: {}", e))?;
+-    let resolved_path_string = target.path.to_string_lossy().to_string();
+ 
+     if prefer_editor.unwrap_or(false) && metadata.is_file() {
+         if open_local_target_in_editor(&target).is_ok() {
+@@ -2204,59 +2239,73 @@ pub async fn open_local_path(
+         }
+     }
+ 
+-    let result = if cfg!(target_os = "windows") {
+-        Command::new("cmd")
+-            .args(["/C", "start", "", &resolved_path_string])
+-            .without_console_window()
+-            .spawn()
+-    } else if cfg!(target_os = "macos") {
+-        let mut command = Command::new("open");
+-        if metadata.is_file() {
+-            command.arg("-R");
+-        }
+-        command.arg(&target.path).spawn()
+-    } else {
+-        Command::new("xdg-open").arg(&target.path).spawn()
+-    };
++    #[cfg(target_os = "windows")]
++    {
++        open_windows_local_path(&app, &target.path)
++            .map_err(|e| format!("无法打开本地文件: {}", e))
++    }
+ 
+-    match result {
+-        Ok(_) => Ok(()),
+-        Err(e) => Err(format!("无法打开本地文件: {}", e)),
++    #[cfg(not(target_os = "windows"))]
++    {
++        use std::process::Command;
++        let _ = app;
++        let result = if cfg!(target_os = "macos") {
++            let mut command = Command::new("open");
++            if metadata.is_file() {
++                command.arg("-R");
++            }
++            command.arg(&target.path).spawn()
++        } else {
++            Command::new("xdg-open").arg(&target.path).spawn()
++        };
++
++        result.map(|_| ()).map_err(|e| format!("无法打开本地文件: {}", e))
+     }
+ }
+ 
+ #[tauri::command]
+-pub async fn open_confirmed_external_file(path: String) -> Result<(), String> {
+-    use std::process::Command;
+-
++pub async fn open_confirmed_external_file(app: AppHandle, path: String) -> Result<(), String> {
+     let target = resolve_confirmed_external_file_target(&path)?;
+-    let resolved_path_string = target.to_string_lossy().to_string();
+ 
+-    let result = if cfg!(target_os = "windows") {
+-        let shell_path = windows_explorer_path(&resolved_path_string);
+-        let mut command = Command::new("explorer");
+-        if target.is_file() {
+-            command.arg(format!("/select,{}", shell_path));
++    #[cfg(target_os = "windows")]
++    {
++        open_windows_local_path(&app, &target)
++            .map_err(|e| format!("无法打开跨项目文件或文件夹: {}", e))
++    }
++
++    #[cfg(not(target_os = "windows"))]
++    {
++        use std::process::Command;
++        let _ = app;
++        let result = if cfg!(target_os = "macos") {
++            let mut command = Command::new("open");
++            if target.is_file() {
++                command.arg("-R");
++            }
++            command.arg(&target).spawn()
+         } else {
+-            command.arg(shell_path);
+-        }
+-        command.spawn()
+-    } else if cfg!(target_os = "macos") {
+-        let mut command = Command::new("open");
+-        if target.is_file() {
+-            command.arg("-R");
+-        }
+-        command.arg(&target).spawn()
+-    } else {
+-        Command::new("xdg-open").arg(&target).spawn()
+-    };
++            Command::new("xdg-open").arg(&target).spawn()
++        };
+ 
+-    result
+-        .map(|_| ())
+-        .map_err(|e| format!("无法在文件管理器中打开跨项目文件或文件夹: {}", e))
++        result.map(|_| ()).map_err(|e| {
++            format!("无法在文件管理器中打开跨项目文件或文件夹: {}", e)
++        })
++    }
++}
++
++#[cfg(target_os = "windows")]
++fn open_windows_local_path(app: &AppHandle, path: &std::path::Path) -> Result<(), String> {
++    use tauri_plugin_shell::ShellExt;
++
++    // The installed shell plugin enables open's shellexecute-on-windows feature:
++    // its default opener calls ShellExecuteExW without a command interpreter.
++    #[allow(deprecated)]
++    app.shell()
++        .open(windows_explorer_path(&path.to_string_lossy()), None)
++        .map_err(|e| e.to_string())
+ }
+ 
+-// canonicalize() returns extended-length Windows paths; Explorer expects shell paths.
++// canonicalize() returns extended-length Windows paths; the shell expects shell paths.
+ fn windows_explorer_path(path: &str) -> String {
+     if let Some(unc_path) = path.strip_prefix(r"\\?\UNC\") {
+         format!(r"\\{}", unc_path)
+@@ -4014,11 +4063,7 @@ pub async fn center_window(app: AppHandle) -> Result<(), String> {
+     } else {
+         #[cfg(target_os = "windows")]
+         {
+-            use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+-
+-            let hwnd = window.hwnd().map_err(|e| format!("获取窗口句柄失败: {}", e))?;
+-            // Tauri's show/unminimize may activate the window on Windows.
+-            unsafe { ShowWindow(hwnd.0, SW_SHOWNOACTIVATE) };
++            crate::ui::popup_presentation::show_behind_existing(&window)?;
+         }
+         #[cfg(not(target_os = "windows"))]
+         window.show().map_err(|e| format!("显示窗口失败: {}", e))?;
+@@ -4628,6 +4673,18 @@ fn has_dangerous_local_open_extension(path: &Path) -> bool {
+         extension.as_str(),
+         "app" | "command" | "terminal" | "exe" | "bat" | "cmd" | "com" | "scr" | "ps1"
+     )
++        // Windows default associations can execute scripts, follow shortcuts or
++        // install packages even though these files have no executable permission bit.
++        || (cfg!(target_os = "windows")
++            && matches!(
++                extension.as_str(),
++                "vbs" | "vbe" | "js" | "jse" | "wsf" | "wsh" | "hta"
++                    | "lnk" | "url" | "pif" | "scf" | "appref-ms"
++                    | "msi" | "msp" | "msu" | "application" | "appinstaller"
++                    | "appx" | "appxbundle" | "msix" | "msixbundle"
++                    | "cpl" | "msc" | "reg" | "diagcab"
++                    | "py" | "pyw" | "pyc" | "pyo"
++            ))
+ }
+ 
+ #[cfg(unix)]
+@@ -4788,7 +4845,7 @@ mod local_file_path_tests {
+     fn resolves_windows_url_style_drive_paths() {
+         let root = std::env::temp_dir().join(format!("iterate-drive-{}", uuid::Uuid::new_v4()));
+         std::fs::create_dir_all(&root).unwrap();
+-        let file = root.join("中文 screenshot.png");
++        let file = root.join("中文 screenshot & %TEMP%.png");
+         std::fs::write(&file, b"path normalization fixture").unwrap();
+         let drive_path = file.to_string_lossy().replace('\\', "/");
+         for input in [drive_path.clone(), format!("/{drive_path}"), format!("file:///{drive_path}")] {
+@@ -4966,6 +5023,7 @@ mod local_file_path_tests {
+     #[test]
+     fn normalizes_windows_explorer_paths() {
+         assert_eq!(super::windows_explorer_path(r"\\?\C:\中文 空格\folder"), r"C:\中文 空格\folder");
++        assert_eq!(super::windows_explorer_path(r"\\?\C:\中文 空格 & %TEMP%\file.txt"), r"C:\中文 空格 & %TEMP%\file.txt");
+         assert_eq!(super::windows_explorer_path(r"\\?\UNC\server\share\folder"), r"\\server\share\folder");
+         assert_eq!(super::windows_explorer_path(r"C:\folder"), r"C:\folder");
+     }
+@@ -4980,6 +5038,50 @@ mod local_file_path_tests {
+         std::fs::remove_file(file).unwrap();
+     }
+ 
++    #[cfg(target_os = "windows")]
++    #[test]
++    fn rejects_windows_execution_associations_before_local_or_external_open() {
++        let root = tempfile::tempdir().expect("create isolated resolver fixtures");
++        let execution_categories: &[(&str, &[&str])] = &[
++            ("Windows Script Host", &["vbs", "vbe", "js", "jse", "wsf", "wsh"]),
++            ("HTML application", &["hta"]),
++            ("shortcuts", &["lnk", "url", "pif", "scf", "appref-ms"]),
++            ("installers", &["msi", "msp", "msu", "application", "appinstaller", "appx", "appxbundle", "msix", "msixbundle"]),
++            ("system actions", &["cpl", "msc", "reg", "diagcab"]),
++            ("Python handlers", &["py", "pyw", "pyc", "pyo"]),
++        ];
++
++        for &(category, extensions) in execution_categories {
++            for extension in extensions {
++                for spelling in [extension.to_string(), extension.to_ascii_uppercase()] {
++                    let file = root.path().join(format!("禁止运行 中文 空格 & %TEMP%.{spelling}"));
++                    // These fixtures are only canonicalized and classified, never opened.
++                    std::fs::write(&file, b"resolver-only fixture").expect("write inert fixture");
++                    let local_error = resolve_local_open_target(
++                        &file.to_string_lossy(),
++                        &root.path().to_string_lossy(),
++                    ).expect_err("local resolver must reject executable associations");
++                    let external_error = resolve_confirmed_external_file_target(&file.to_string_lossy())
++                        .expect_err("external resolver must reject executable associations");
++                    assert!(local_error.contains("可执行文件"), "{category}: {spelling}");
++                    assert!(external_error.contains("可执行文件"), "{category}: {spelling}");
++                }
++            }
++        }
++    }
++
++    #[cfg(target_os = "windows")]
++    #[test]
++    fn windows_execution_protection_preserves_ordinary_documents() {
++        let root = tempfile::tempdir().expect("create ordinary document fixtures");
++        for extension in ["txt", "md", "png", "pdf", "json", "zip"] {
++            let file = root.path().join(format!("中文 空格 & %TEMP%.{extension}"));
++            std::fs::write(&file, b"resolver-only ordinary document").expect("write fixture");
++            assert!(resolve_local_open_target(&file.to_string_lossy(), &root.path().to_string_lossy()).is_ok());
++            assert!(resolve_confirmed_external_file_target(&file.to_string_lossy()).is_ok());
++        }
++    }
++
+     #[test]
+     fn rejects_confirmed_external_relative_path() {
+         assert!(resolve_confirmed_external_file_target("relative-folder")
+diff --git a/src/rust/ui/mod.rs b/src/rust/ui/mod.rs
+index dc51390..3632a9c 100644
+--- a/src/rust/ui/mod.rs
++++ b/src/rust/ui/mod.rs
+@@ -17,6 +17,8 @@ pub mod window;
+ pub mod window_events;
+ pub mod window_registry;
+ #[cfg(target_os = "windows")]
++pub mod popup_presentation;
++#[cfg(target_os = "windows")]
+ pub mod webview_recovery;
+ 
+ pub use audio::*;
+diff --git a/src/rust/ui/window_registry.rs b/src/rust/ui/window_registry.rs
+index 2f71400..03ee6bf 100644
+--- a/src/rust/ui/window_registry.rs
++++ b/src/rust/ui/window_registry.rs
+@@ -130,7 +130,7 @@ impl WindowRegistry {
+ 
+     fn cleanup_stale_instances(&mut self) {
+         self.instances
+-            .retain(|instance| is_process_running(instance.pid));
++            .retain(|instance| is_process_running(instance.pid, &instance.registered_at));
+         let live_pids = self
+             .instances
+             .iter()
+@@ -343,7 +343,9 @@ fn truncate_request_title(title: &str) -> String {
+     title.trim().chars().take(80).collect()
+ }
+ 
+-fn is_process_running(pid: u32) -> bool {
++fn is_process_running(pid: u32, registered_at: &str) -> bool {
++    #[cfg(not(target_os = "windows"))]
++    let _ = registered_at;
+     #[cfg(target_os = "macos")]
+     {
+         use std::process::Command;
+@@ -356,9 +358,9 @@ fn is_process_running(pid: u32) -> bool {
+ 
+     #[cfg(target_os = "windows")]
+     {
+-        use windows_sys::Win32::Foundation::CloseHandle;
++        use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+         use windows_sys::Win32::System::Threading::{
+-            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
++            GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+         };
+         const STILL_ACTIVE_EXIT_CODE: u32 = 259;
+ 
+@@ -371,8 +373,33 @@ fn is_process_running(pid: u32) -> bool {
+             let mut exit_code = 0u32;
+             let running = GetExitCodeProcess(handle, &mut exit_code) != 0
+                 && exit_code == STILL_ACTIVE_EXIT_CODE;
++            // A live PID can belong to a different process after the original
++            // window exits. Old registry entries already carry the registration
++            // timestamp, so no data migration or executable-name guess is needed.
++            let same_process = if running {
++                let mut created: FILETIME = std::mem::zeroed();
++                let mut exited: FILETIME = std::mem::zeroed();
++                let mut kernel: FILETIME = std::mem::zeroed();
++                let mut user: FILETIME = std::mem::zeroed();
++                if GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) != 0 {
++                    let ticks = ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64;
++                    match chrono::DateTime::parse_from_rfc3339(registered_at) {
++                        Ok(registered) => {
++                            let created_unix_micros = i128::from(ticks / 10) - 11_644_473_600_000_000i128;
++                            created_unix_micros <= i128::from(registered.timestamp_micros())
++                        }
++                        // Keep legacy records whose timestamp cannot establish
++                        // process identity; do not close an unproven live request.
++                        Err(_) => true,
++                    }
++                } else {
++                    true
++                }
++            } else {
++                false
++            };
+             let _ = CloseHandle(handle);
+-            running
++            running && same_process
+         }
+     }
+ 
+@@ -717,6 +744,32 @@ mod tests {
+         assert_eq!(instances[0].port, Some(5311));
+     }
+ 
++    #[cfg(target_os = "windows")]
++    #[test]
++    fn reused_live_pid_cannot_keep_a_registration_from_before_process_creation() {
++        let dir = tempfile::tempdir().unwrap();
++        let path = dir.path().join("iterate_windows.json");
++        let pid = std::process::id();
++        let stale = super::WindowInstance {
++            pid,
++            project_path: "C:/closed-cli".into(),
++            window_title: "closed CLI".into(),
++            registered_at: "2000-01-01T00:00:00Z".into(),
++            port: None,
++            request_id: Some("closed-request".into()),
++            request_title: Some("closed".into()),
++        };
++        let mut registry = super::WindowRegistry {
++            instances: vec![stale],
++            ..Default::default()
++        };
++        super::save_registry_atomically(&path, &registry).unwrap();
++        assert!(registry.get_all_instances_at_path(&path).is_empty());
++        assert!(super::load_registry_from_path(&path).instances.is_empty());
++        assert!(super::is_process_running(pid, &chrono::Utc::now().to_rfc3339()));
++        assert!(super::is_process_running(pid, "legacy-unparseable"));
++    }
++
+     #[test]
+     fn old_registry_json_defaults_focus_timestamps() {
+         let registry: WindowRegistry =

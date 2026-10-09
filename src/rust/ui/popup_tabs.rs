@@ -7,6 +7,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(target_os = "macos")]
+#[path = "popup_tabs_macos.rs"]
+mod macos;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 static REGISTERED: AtomicBool = AtomicBool::new(false);
@@ -35,6 +38,9 @@ struct Group {
     mode: PopupDisplayMode,
     active_pid: Option<u32>,
     focus_pid: Option<u32>,
+    #[cfg(target_os = "macos")]
+    #[serde(default)]
+    focus_guard: Option<macos::FocusGuard>,
     geometry: Option<Geometry>,
     tabs: Vec<Tab>,
 }
@@ -66,6 +72,8 @@ impl Group {
             self.active_pid = next_pid.or_else(|| self.tabs.first().map(|t| t.pid));
             // Losing a process never steals focus from another application.
             self.focus_pid = None;
+            #[cfg(target_os = "macos")]
+            { self.focus_guard = None; }
         }
         if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.pid) == self.active_pid) {
             tab.unread = false;
@@ -78,6 +86,8 @@ impl Group {
         tab.unread = false;
         self.active_pid = Some(pid);
         self.focus_pid = Some(pid);
+        #[cfg(target_os = "macos")]
+        { self.focus_guard = None; }
         Ok(())
     }
 
@@ -113,8 +123,15 @@ impl Group {
     }
 }
 
-fn state_path() -> std::path::PathBuf {
-    std::env::temp_dir().join("iterate_popup_tabs.json")
+fn state_path() -> Result<std::path::PathBuf, String> {
+    // Local MCP callers and the receiver daemon can inherit different TEMP
+    // directories. Windows tabs belong to the shared configuration profile.
+    #[cfg(target_os = "windows")]
+    return crate::config::cunzhi_config_dir()
+        .map(|directory| directory.join("iterate_popup_tabs.json"))
+        .map_err(|error| error.to_string());
+    #[cfg(not(target_os = "windows"))]
+    Ok(std::env::temp_dir().join("iterate_popup_tabs.json"))
 }
 
 fn update_at(path: &Path, change: impl FnOnce(&mut Group) -> Result<(), String>) -> Result<Group, String> {
@@ -134,6 +151,8 @@ fn update_at(path: &Path, change: impl FnOnce(&mut Group) -> Result<(), String>)
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Group {
             mode: load_standalone_config().map_err(|e| e.to_string())?.ui_config.window_config.popup_display_mode,
             active_pid: None, focus_pid: None, geometry: None, tabs: vec![],
+            #[cfg(target_os = "macos")]
+            focus_guard: None,
         },
         Err(e) => return Err(e.to_string()),
     };
@@ -151,7 +170,7 @@ fn update_at(path: &Path, change: impl FnOnce(&mut Group) -> Result<(), String>)
 }
 
 fn update(change: impl FnOnce(&mut Group) -> Result<(), String>) -> Result<Group, String> {
-    update_at(&state_path(), change)
+    update_at(&state_path()?, change)
 }
 
 fn is_live(tab: &Tab) -> bool {
@@ -202,7 +221,9 @@ fn is_visible(window: &tauri::WebviewWindow) -> bool {
     { window.hwnd().is_ok_and(|handle| unsafe {
         windows_sys::Win32::UI::WindowsAndMessaging::IsWindowVisible(handle.0) != 0
     }) }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    { macos::visible(std::process::id()) }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     { window.is_visible().unwrap_or(false) }
 }
 
@@ -243,13 +264,34 @@ fn handoff_ready(active_pid: Option<u32>, destination_visible: bool) -> bool {
     active_pid.is_none() || destination_visible
 }
 
+#[cfg(target_os = "windows")]
+fn set_tab_transitions(window: &tauri::WebviewWindow, tabs: bool) -> Result<(), String> {
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED};
+    let disabled = i32::from(tabs);
+    let result = unsafe {
+        DwmSetWindowAttribute(window.hwnd().map_err(|error| error.to_string())?.0,
+            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+            &disabled as *const i32 as *const std::ffi::c_void,
+            std::mem::size_of_val(&disabled) as u32)
+    };
+    if result < 0 { return Err(format!("设置标签窗口动画失败: 0x{:08x}", result as u32)); }
+    Ok(())
+}
+
 fn hide(window: &tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    macos::disable_animation(window)?;
     window.hide().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    macos::hide(window)?;
     #[cfg(target_os = "windows")]
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
         ShowWindow(window.hwnd().map_err(|e| e.to_string())?.0, SW_HIDE);
     }
+    // A minimized background window can retain its taskbar entry after hide.
+    #[cfg(target_os = "windows")]
+    window.set_skip_taskbar(true).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -260,13 +302,20 @@ fn last_input_time() -> Option<u32> {
         let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
         return (GetLastInputInfo(&mut info) != 0).then_some(info.dwTime);
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    { Some(macos::input_counter()) }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     { None }
 }
 
 pub fn remember_send_focus(window: &tauri::WebviewWindow) {
     SEND_WAS_FOREGROUND.store(false, Ordering::SeqCst);
     if !REGISTERED.load(Ordering::SeqCst) { return; }
+    #[cfg(target_os = "macos")]
+    if macos::foreground(window) {
+        SEND_INPUT_TIME.store(macos::input_counter(), Ordering::SeqCst);
+        SEND_WAS_FOREGROUND.store(true, Ordering::SeqCst);
+    }
     #[cfg(target_os = "windows")]
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
@@ -288,6 +337,39 @@ fn may_handoff_focus(was_foreground: bool, input_time: u32, current_input: Optio
 pub fn prepare_send_handoff(window: &tauri::WebviewWindow) -> Result<(), String> {
     remember_send_focus(window);
     if !REGISTERED.load(Ordering::SeqCst) { return Ok(()); }
+    #[cfg(target_os = "macos")]
+    {
+        let foreground = macos::foreground(window);
+        let current_geometry = geometry(window);
+        let mut handoff = None;
+        let group = update(|group| {
+            let Some(next_pid) = group.send_successor(std::process::id()) else { return Ok(()) };
+            let request_id = group.tabs.iter().find(|tab| tab.pid == std::process::id()).ok_or("发送标签已关闭")?.request_id.clone();
+            let input_time = last_input_time();
+            group.select(next_pid)?;
+            group.focus_pid = foreground.then_some(next_pid);
+            group.focus_guard = foreground.then(|| macos::FocusGuard::new(std::process::id()));
+            group.geometry = current_geometry.clone();
+            handoff = Some(SendHandoff { request_id, target_pid: next_pid, input_time });
+            Ok(())
+        })?;
+        if group.mode == PopupDisplayMode::Tabs { macos::disable_animation(window)?; }
+        if let Some(handoff) = handoff {
+            let target_pid = handoff.target_pid;
+            *SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")? = Some(handoff);
+            macos::wake(target_pid);
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while !macos::visible(target_pid) && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(3));
+            }
+            if !macos::visible(target_pid) {
+                let pending = SEND_HANDOFF.lock().map_err(|_| "发送交接状态锁定失败")?.take();
+                if let Some(pending) = pending { update(|group| { group.restore_send_handoff(std::process::id(), &pending); Ok(()) })?; }
+                return Err("下一标签窗口未显示，保留当前窗口".into());
+            }
+            log::info!("[Mac tab send handoff] source={} target={} foreground={}", std::process::id(), target_pid, foreground);
+        }
+    }
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::Foundation::RECT;
@@ -357,6 +439,19 @@ pub fn prepare_send_handoff(window: &tauri::WebviewWindow) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn send_handoff_in_progress() -> bool {
+    SEND_HANDOFF.lock().is_ok_and(|handoff| handoff.is_some())
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn confirm_send_window_hidden(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if REGISTERED.load(Ordering::SeqCst) && update(|_| Ok(()))?.mode == PopupDisplayMode::Tabs {
+        macos::hide(window)?;
+    }
+    Ok(())
+}
+
 /// Restore a failed send without taking over a peer the user has since edited
 /// or selected. Returning true means tab presentation has been handled here.
 #[tauri::command]
@@ -380,9 +475,13 @@ pub fn restore_popup_tab(app: AppHandle) -> Result<bool, String> {
             window.hwnd().is_ok_and(|hwnd| hwnd.0 == foreground)
                 || tab_window(pending.target_pid) == Some(foreground)
         };
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        let focus = macos::foreground(&window) || crate::native_speech::target::capture_frontmost_application().is_ok_and(|app| app.pid == pending.target_pid as i32);
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         let focus = false;
-        show(&window, focus)?;
+        show(&window, focus, true, &None)?;
+        #[cfg(target_os = "macos")]
+        macos::wake(pending.target_pid);
     }
     Ok(true)
 }
@@ -412,7 +511,11 @@ pub fn complete_popup_tab(request_id: String) -> Result<(), String> {
     Ok(())
 }
 
-fn show(window: &tauri::WebviewWindow, focus: bool) -> Result<(), String> {
+fn show(window: &tauri::WebviewWindow, focus: bool, _tabs: bool, _group: &Option<Group>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return macos::show(window, focus, _tabs, _group.as_ref().and_then(|g| g.focus_guard.clone()));
+    #[cfg(not(target_os = "macos"))]
+    {
     if focus {
         window.unminimize().map_err(|e| e.to_string())?;
         window.show().map_err(|e| e.to_string())?;
@@ -427,16 +530,26 @@ fn show(window: &tauri::WebviewWindow, focus: bool) -> Result<(), String> {
         window.show().map_err(|e| e.to_string())?;
     }
     Ok(())
+    }
 }
 
 /// Native polling remains live when WebView timers are suspended in hidden tabs.
 fn start_worker(app: AppHandle, initial: Group) {
     if STARTED.swap(true, Ordering::SeqCst) { return; }
     std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        let wake = macos::Wake::new();
         let pid = std::process::id();
         let mut previous = initial;
         let mut split_geometry = None;
+        #[cfg(target_os = "windows")]
+        let mut taskbar_skip = None;
+        #[cfg(target_os = "windows")]
+        let mut transitions_disabled = None;
         loop {
+            #[cfg(target_os = "macos")]
+            if let Some(wake) = &wake { wake.wait(); } else { std::thread::sleep(Duration::from_millis(300)); }
+            #[cfg(not(target_os = "macos"))]
             std::thread::sleep(Duration::from_millis(300));
             let Some(window) = app.get_webview_window("main") else { break };
             // Native queries can marshal onto the UI thread. Never hold the
@@ -459,6 +572,26 @@ fn start_worker(app: AppHandle, initial: Group) {
             let active = group.active_pid == Some(pid);
             let tabs = group.mode == PopupDisplayMode::Tabs;
             let was_tabs = previous.mode == PopupDisplayMode::Tabs;
+            #[cfg(target_os = "windows")]
+            {
+                // Native windows are exchanged behind the tab bar. Their
+                // individual fade/restore animations must not expose that
+                // exchange; separate-window mode retains normal transitions.
+                if transitions_disabled != Some(tabs) {
+                    match set_tab_transitions(&window, tabs) {
+                        Ok(()) => transitions_disabled = Some(tabs),
+                        Err(error) => log::warn!("{error}"),
+                    }
+                }
+                let skip = tabs && !active;
+                if taskbar_skip != Some(skip) {
+                    if let Err(error) = window.set_skip_taskbar(skip) {
+                        log::warn!("标签任务栏状态更新失败: {error}");
+                        continue;
+                    }
+                    taskbar_skip = Some(skip);
+                }
+            }
             let visibility_result = if tabs && !active {
                 if !was_tabs { split_geometry = geometry(&window); }
                 // The destination runs in another process with an independent
@@ -467,21 +600,25 @@ fn start_worker(app: AppHandle, initial: Group) {
                 #[cfg(target_os = "windows")]
                 let ready = handoff_ready(group.active_pid,
                     group.active_pid.is_some_and(tab_window_visible));
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(target_os = "macos")]
+                let ready = handoff_ready(group.active_pid, group.active_pid.is_some_and(macos::visible));
+                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
                 let ready = true;
                 if ready && is_visible(&window) { hide(&window) } else { Ok(()) }
             } else if tabs && active && (!was_active || !was_tabs) {
                 if !was_tabs { split_geometry = geometry(&window); }
                 group.geometry.as_ref().map(|g| apply_geometry(&window, g)).transpose()
-                    .and_then(|_| show(&window, group.focus_pid == Some(pid)))
+                    .and_then(|_| show(&window, group.focus_pid == Some(pid), true, &Some(group.clone())))
             } else if !tabs && was_tabs {
                 split_geometry.take().as_ref().map(|g| apply_geometry(&window, g)).transpose()
-                    .and_then(|_| show(&window, false))
+                    .and_then(|_| show(&window, false, false, &None))
             } else { Ok(()) };
             if let Err(error) = visibility_result {
                 log::warn!("标签窗口显示失败: {error}");
                 continue;
             }
+            #[cfg(target_os = "macos")]
+            if active && !was_active { if let Some(previous_pid) = previous.active_pid { macos::wake(previous_pid); } }
             if group.snapshot() != previous.snapshot() {
                 let _ = window.emit("popup-tabs-changed", group.snapshot());
             }
@@ -506,6 +643,18 @@ pub fn register_popup_tab(app: AppHandle, request_id: String, title: String, pro
         }
         Ok(())
     })?;
+    // Apply before the frontend's first show/minimize, rather than waiting
+    // for the native worker's first tick.
+    #[cfg(target_os = "windows")]
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(error) = set_tab_transitions(&window, group.mode == PopupDisplayMode::Tabs) {
+            log::warn!("{error}");
+        }
+        let skip = group.mode == PopupDisplayMode::Tabs && group.active_pid != Some(pid);
+        if let Err(error) = window.set_skip_taskbar(skip) {
+            log::warn!("标签任务栏初始化失败: {error}");
+        }
+    }
     REGISTERED.store(true, Ordering::SeqCst);
     start_worker(app, group.clone());
     Ok(group.snapshot())
@@ -527,9 +676,13 @@ pub fn select_popup_tab(app: AppHandle, pid: u32) -> Result<Snapshot, String> {
         #[cfg(target_os = "windows")]
         unsafe { windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(pid); }
         group.select(pid)?;
+        #[cfg(target_os = "macos")]
+        { group.focus_guard = Some(macos::FocusGuard::new(std::process::id())); }
         group.geometry = current_geometry;
         Ok(())
     })?;
+    #[cfg(target_os = "macos")]
+    { macos::wake(pid); }
     // Keep the source window until the destination's native worker presents it.
     // No form remount, clipboard transfer, or response route mutation occurs.
     Ok(group.snapshot())
@@ -560,6 +713,8 @@ mod tests {
     use super::*;
     fn group() -> Group {
         Group { mode: PopupDisplayMode::Tabs, active_pid: Some(1), focus_pid: None, geometry: None,
+            #[cfg(target_os = "macos")]
+            focus_guard: None,
             tabs: (1..=3).map(|pid| Tab { pid, request_id: format!("req-{pid}"), title: "same title".into(),
                 project_path: "same project".into(), registered_at: "now".into(), unread: pid != 1 }).collect() }
     }

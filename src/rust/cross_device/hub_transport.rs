@@ -8,6 +8,10 @@ use std::{fs::{self, File, OpenOptions}, path::{Path, PathBuf}, time::Duration};
 mod source_watchdog;
 use source_watchdog::{Progress, Watchdog};
 
+#[cfg(target_os = "windows")]
+#[path = "hub_credentials.rs"]
+mod hub_credentials;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HubConfig {
     pub endpoint: String,
@@ -26,6 +30,12 @@ pub fn config() -> Result<Option<HubConfig>> {
 }
 
 pub(crate) fn data_directory() -> Result<PathBuf> { directory() }
+pub(super) async fn desktop_call(path:&str,body:&Value)->Result<Value> {
+    let config=config()?.ok_or("请先配置公网服务")?;
+    let client=Client::new(config)?;
+    // Relay management calls never touch the long-running source session.
+    client.call(path,Some(body)).await
+}
 pub(crate) fn ready() -> bool {
     directory().ok().and_then(|d|read_json::<Value>(&d.join("hub-source-health.json")).ok())
         .is_some_and(|v|v["at"].as_i64().is_some_and(|at|at+10>=chrono::Utc::now().timestamp()))
@@ -204,7 +214,7 @@ fn bindings() -> Result<Vec<Binding>> {
 fn mirror_wire(route:&str, source:&str, name:&str, request:&Value)->Value {
     json!({"message_type":"cross_device_mirror_state","payload":{"mirror_id":route,"request_id":route,"source":"cross_device_mirror","project_path":"",
         "origin_device_id":source,"origin_name":name,"origin_platform":"macos",
-        "request":{"id":route,"project_path":"","message":request["message"],"predefined_options":request["predefined_options"],"is_markdown":request["is_markdown"]}}})
+        "request":{"id":route,"project_path":"","message":request["message"],"conversation_title":request["conversation_title"],"predefined_options":request["predefined_options"],"is_markdown":request["is_markdown"]}}})
 }
 
 fn registration_binding(config: &HubConfig, reg: &super::Registration) -> Result<Binding> {
@@ -347,6 +357,9 @@ impl Client {
     }
     fn new(config: HubConfig) -> Result<Self> {
         validate(&config)?;
+        #[cfg(target_os = "windows")]
+        let token = hub_credentials::source_token(&config)?;
+        #[cfg(not(target_os = "windows"))]
         let token = std::env::var(&config.token_env).map_err(|_| "hub_source_credential_missing")?;
         if token.is_empty() { return Err("hub_source_credential_missing".into()); }
         let mut builder = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
@@ -1239,14 +1252,17 @@ mod tests {
     #[test]
     fn cloud_mac_publish_wire_keeps_legacy_envelope_and_bounded_request() {
         let route=format!("cross-mirror:{}","a".repeat(64));
-        let wire=mirror_wire(&route,"fixture-mac","Mac",&json!({"message":"published text","predefined_options":["one"],"is_markdown":true,"source":"must-not-copy","project_path":"/private/source"}));
+        let wire=mirror_wire(&route,"fixture-mac","Mac",&json!({"message":"published text","conversation_title":"  Mac 的真实会话标题  ","predefined_options":["one"],"is_markdown":true,"source":"must-not-copy","project_path":"/private/source"}));
         assert_eq!(wire["message_type"],"cross_device_mirror_state");
         let p=&wire["payload"];assert_eq!(p["source"],"cross_device_mirror");
         assert_eq!(p["request_id"],route);assert_eq!(p["mirror_id"],route);
         assert_eq!(p["project_path"],"");assert_eq!(p["request"]["project_path"],"");
         assert_eq!(p["request"]["id"],route);assert_eq!(p["request"]["message"],"published text");
-        assert!(p["request"].as_object().unwrap().keys().all(|k|matches!(k.as_str(),"id"|"message"|"predefined_options"|"is_markdown"|"project_path")));
+        assert_eq!(p["request"]["conversation_title"],"  Mac 的真实会话标题  ");
+        assert!(p["request"].as_object().unwrap().keys().all(|k|matches!(k.as_str(),"id"|"message"|"conversation_title"|"predefined_options"|"is_markdown"|"project_path")));
         assert!(p["request"].get("source").is_none());
+        let missing=mirror_wire(&route,"fixture-mac","Mac",&json!({"message":"without title"}));
+        assert!(missing["payload"]["request"]["conversation_title"].is_null());
     }
     #[test]
     fn endpoint_validation_never_disables_tls_identity() {

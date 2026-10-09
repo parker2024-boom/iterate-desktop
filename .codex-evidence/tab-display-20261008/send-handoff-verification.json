@@ -1,0 +1,136 @@
+{
+    "artifact_sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+    "send_cases":  [
+                       {
+                           "trace":  {
+                                         "both_hidden_samples":  0,
+                                         "target_process_preserved":  true,
+                                         "source_hwnd":  7080042,
+                                         "target_hwnd":  69995686,
+                                         "samples":  1737,
+                                         "source_first_hidden_ms":  411.7026,
+                                         "target_pid":  20520,
+                                         "hidden_to_shown_ms":  -142.6035,
+                                         "target_first_shown_ms":  269.0991,
+                                         "legacy_target_sha256":  null,
+                                         "scenario":  "success",
+                                         "target_became_foreground":  true,
+                                         "target_foreground_samples":  1640,
+                                         "source_pid":  27492,
+                                         "request_id":  "tabs-acceptance-0"
+                                     },
+                           "case":  "release-success",
+                           "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                           "steps":  4,
+                           "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-success\\native-acceptance-102031\\result.json"
+                       },
+                       {
+                           "trace":  {
+                                         "both_hidden_samples":  0,
+                                         "target_process_preserved":  true,
+                                         "source_hwnd":  1444994,
+                                         "target_hwnd":  396438,
+                                         "samples":  530,
+                                         "source_first_hidden_ms":  431.15770000000003,
+                                         "target_pid":  5488,
+                                         "hidden_to_shown_ms":  -158.88080000000002,
+                                         "target_first_shown_ms":  272.2769,
+                                         "legacy_target_sha256":  null,
+                                         "scenario":  "failure",
+                                         "target_became_foreground":  true,
+                                         "target_foreground_samples":  345,
+                                         "source_pid":  31356,
+                                         "request_id":  "tabs-acceptance-0"
+                                     },
+                           "case":  "release-failure",
+                           "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                           "steps":  3,
+                           "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-failure\\native-acceptance-102042\\result.json"
+                       },
+                       {
+                           "trace":  {
+                                         "both_hidden_samples":  0,
+                                         "target_process_preserved":  true,
+                                         "source_hwnd":  4066358,
+                                         "target_hwnd":  13174292,
+                                         "samples":  881,
+                                         "source_first_hidden_ms":  420.0625,
+                                         "target_pid":  30836,
+                                         "hidden_to_shown_ms":  -151.87599999999998,
+                                         "target_first_shown_ms":  268.1865,
+                                         "legacy_target_sha256":  null,
+                                         "scenario":  "failure-after-edit",
+                                         "target_became_foreground":  true,
+                                         "target_foreground_samples":  786,
+                                         "source_pid":  31248,
+                                         "request_id":  "tabs-acceptance-0"
+                                     },
+                           "case":  "release-failure-after-edit",
+                           "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                           "steps":  5,
+                           "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-failure-after-edit\\native-acceptance-102048\\result.json"
+                       },
+                       {
+                           "trace":  {
+                                         "both_hidden_samples":  0,
+                                         "target_process_preserved":  true,
+                                         "source_hwnd":  4197292,
+                                         "target_hwnd":  658298,
+                                         "samples":  2234,
+                                         "source_first_hidden_ms":  424.8349,
+                                         "target_pid":  25824,
+                                         "hidden_to_shown_ms":  -155.7842,
+                                         "target_first_shown_ms":  269.0507,
+                                         "legacy_target_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+                                         "scenario":  "success",
+                                         "target_became_foreground":  true,
+                                         "target_foreground_samples":  2138,
+                                         "source_pid":  27916,
+                                         "request_id":  "tabs-acceptance-0"
+                                     },
+                           "case":  "release-mixed-retry",
+                           "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                           "steps":  4,
+                           "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\release-mixed-retry\\native-acceptance-102155\\result.json"
+                       },
+                       {
+                           "trace":  {
+                                         "both_hidden_samples":  0,
+                                         "target_process_preserved":  true,
+                                         "source_hwnd":  13699800,
+                                         "target_hwnd":  1641724,
+                                         "samples":  2385,
+                                         "source_first_hidden_ms":  422.94050000000004,
+                                         "target_pid":  21000,
+                                         "hidden_to_shown_ms":  -143.6379,
+                                         "target_first_shown_ms":  279.30260000000004,
+                                         "legacy_target_sha256":  "51EAEF3C75EF8C01E5437A1755A8837A08006775EA6CFBF16E96424C7C0705D0",
+                                         "scenario":  "success",
+                                         "target_became_foreground":  true,
+                                         "target_foreground_samples":  2286,
+                                         "source_pid":  25672,
+                                         "request_id":  "tabs-acceptance-0"
+                                     },
+                           "case":  "installed-smoke",
+                           "sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+                           "steps":  4,
+                           "report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\installed-smoke\\native-acceptance-102527\\result.json"
+                       }
+                   ],
+    "send_trace_samples":  7767,
+    "send_both_hidden_samples":  0,
+    "regression_report":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\send-handoff-20261009\\regression-release\\native-acceptance-102235\\result.json",
+    "regression_steps":  14,
+    "regression_switches":  30,
+    "regression_samples":  6786,
+    "regression_gap_samples":  0,
+    "native_tests":  11,
+    "submission_tests":  16,
+    "assets":  70,
+    "jev":  "Skipped by user",
+    "historical_failed_attempts":  {
+                                       "preflight_regression":  "UIAutomation FindAll timeout before send,8steps/18switches passed",
+                                       "release_mixed":  "Foreground moved to external PID5512; actual retry Pass",
+                                       "older51EAE_full_suite":  "Retained original Fail; currentA705 full14-step suite Pass"
+                                   }
+}

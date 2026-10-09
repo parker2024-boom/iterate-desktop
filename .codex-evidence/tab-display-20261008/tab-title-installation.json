@@ -1,0 +1,36 @@
+{
+    "installed_at":  "2026-10-09T11:38:22.6916464+08:00",
+    "installed_path":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.exe",
+    "installed_sha256":  "2D18F622BE61DF6394CCAD118C752FBD128B7885EB97B74AB97BA7ED7FBD4B86",
+    "backup_path":  "C:\\Users\\liguo\\AppData\\Local\\iterate\\iterate.before-tab-title-20261009.exe",
+    "baseline_sha256":  "A70550568F1EA04CF05B504073BF1AF59EFA3244BB54A8618FABFA4464105F38",
+    "previous_gui_pids":  [
+                              22780,
+                              24632,
+                              18352,
+                              15500,
+                              27220,
+                              27620
+                          ],
+    "preserved_gui_pids":  [
+                               22780,
+                               24632,
+                               18352,
+                               15500,
+                               27220,
+                               27620
+                           ],
+    "all_editors_preserved":  true,
+    "ui_result":  "Pass",
+    "ui_steps":  14,
+    "ui_switches":  30,
+    "ui_evidence":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\ui-final\\native-acceptance-113407\\result.json",
+    "embedded_frontend_assets":  70,
+    "jev":  "Skipped by explicit user preference",
+    "build_outputs":  {
+                          "frontend":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/frontend-dist",
+                          "cargo_build_cache_and_binaries":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+                          "final_artifact_test_temp_evidence":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-title-20261009",
+                          "python_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/python-cache"
+                      }
+}

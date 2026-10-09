@@ -1,0 +1,464 @@
+{
+  "task": "mac-windows-sync-and-startup-permissions",
+  "baseline": {
+    "sync_local_ms": 15044,
+    "sync_mac_ms": 12533,
+    "client_timeout_ms": 3000,
+    "connection_lock_wait_ms": [
+      10788,
+      1251,
+      0
+    ],
+    "requests": 1614,
+    "deferred_requests": 585,
+    "stale_or_missing_leases": 2198
+  },
+  "tests": {
+    "cross_device_passed": 26,
+    "transport_passed": 5,
+    "frontend_passed": 4
+  },
+  "build": {
+    "root": "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008",
+    "cargo_cache": "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+    "frontend": "passed",
+    "windows_release": "passed: 70 embedded assets verified; visible main window verified; installed",
+    "mac_release": "Windows cross-build passed; Mach-O executes on Mac; 70 embedded assets verified; system-only dynamic dependencies"
+  },
+  "mac": {
+    "frontend_transferred": true,
+    "native_build_performed": true,
+    "installed_app_updated": true,
+    "blocker": null,
+    "native_build_host": "Windows",
+    "unsigned_sha256": "76E76DD5B65F0DEA464BCC7A983DA02169D92D68BB15DEC9F2250BF6EAE6B13B",
+    "installed_signed_sha256": "a4069ac3cdbc7e1bccf50c97a6c592a094e8a54e5428a7ad67469eb6fbe96ca5",
+    "signing_entry": "~/Library/Application Support/iterate-signing/install-update.py:signing_session",
+    "backup": "~/Library/Caches/iterate-build/mac-sync-20261008/installed-before-sync-fix.app",
+    "certificate_sha1": "CF5D88FB8C77C4ED6BEBBE4A9503DACEAA0D2BE7",
+    "repeated_startup": {
+      "pids": [
+        14440,
+        14705
+      ],
+      "visible_windows": [
+        551,
+        553
+      ],
+      "system_settings_processes": 0
+    },
+    "user_acceptance": "Mac 已收到，且没有弹设置",
+    "user_acceptance_source": "Actual call_zhi cell186; continue=true"
+  },
+  "jev": {
+    "route": "published_snapshot_fast_path",
+    "initial_gate": "escalate retained after two evidence rounds",
+    "followup": "reversible_daemon_trial accepted; continue_local_restore_mac_access accepted",
+    "open_items": [
+      "JEV patch review remains escalate without concrete code finding after bounded followup",
+      "Observed local WebView2 crash root cause remains unresolved; interaction recovered and user confirmed"
+    ],
+    "final_verification": "auto: 26 cross-device tests, 5 transport tests, and user Mac acceptance verified",
+    "final_patch_review": "escalate: safe_to_apply 0.49; test_gap confidence 0.09; no concrete finding; bounded followups exhausted",
+    "experience_gate": "Claims verified (auto); patch review escalate retained (safe_to_apply 0.49), no concrete finding. Manual reread confirmed candidate lifecycle, existing class, no secret values, and canonical unique files; validator passed."
+  },
+  "installed_windows": {
+    "runtime_fixture_ms": [
+      34,
+      5,
+      4,
+      4,
+      4
+    ],
+    "pid": 27384,
+    "sync_ms": [
+      30,
+      8,
+      7,
+      6,
+      6
+    ],
+    "candidate_sha256": "06FBEA96EE763537D71163E2BE197D768D8DEE3786DF10E9D753F4B98FFE84AC",
+    "backup": "C:/Users/liguo/AppData/Local/iterate/iterate.before-mac-sync-20261008.exe",
+    "mac_sync_ms": 358
+  },
+  "local_interaction": {
+    "health_ports": [
+      5311,
+      5317
+    ],
+    "hung_gui_pid": 21288,
+    "action": "Stopped only hung own-session GUI; real zhi reopened; supervisor recovered one WebView2 crash",
+    "user_confirmation": "现在可以操作",
+    "response_source": "popup",
+    "root_cause": "UI unresponsiveness observed; WebView2 crash recorded; underlying crash cause unresolved"
+  },
+  "experience_records": [
+    "EXP-20261008-006",
+    "EXP-20261008-007"
+  ],
+  "experience_validation": {
+    "pass": true,
+    "records": 96,
+    "unique_ids": 96,
+    "findings": [],
+    "lifecycle": "candidate"
+  },
+  "public_desktop_migration": {
+    "status": "windows_mac_and_hub_deployed_verified",
+    "user_requirement": "Desktop Windows/Mac interact with public Hub only;no local/peer IP setup;server connection indicator replaces cross-device icon",
+    "root_cause_evidence": "Both production sources have fresh cloud heartbeats;desktop peer() previously still made direct IP TLS calls. Mac SSH/VPN routes unavailable.",
+    "mac_user_online": true,
+    "mac_maintenance_access": "Restored via existing Mytool SSH configuration; deployment and real Mac/Windows HTTPS workflow completed.",
+    "jev": "Explicit user skip retained",
+    "native_tests": 50,
+    "public_peer_test": "Final current-source Pass: real Hub fixture used with unreachable device IPs; 1/1, 0.13s",
+    "hub_component_tests": 21,
+    "hub_process_tests": 7,
+    "windows_frontend_lint": "AppContent and CrossDeviceSettings Pass. SyncSettingsPreview has 15 existing baseline errors; exact baseline/current rule counts matched.",
+    "frontend_build": {
+      "result": "Pass",
+      "log": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\public-desktop-20261009\\frontend-close-tab-final.log"
+    },
+    "task_path": "G:/DevLocal/BuildTemp/iterate-desktop/public-desktop-20261009",
+    "deployment": {
+      "hub": "Pass: production deployment, health and data preservation previously verified; unchanged in close/tabs update",
+      "hub_sha256": "ec8c3cb7c6a8e079bd81ecc41db72452744333fbe8739c65b4eb7aa1c60a2c0f",
+      "windows": {
+        "diagnostic_remote_debugging_removed": true,
+        "all_processes_preserved": true,
+        "sha256": "883A0CB42CB1AD8172295CBC6AD0978D9635973EA9CABD67774D885B093C6538",
+        "result": "Pass",
+        "preserved_pids": [
+          22780,
+          15500,
+          27620,
+          26092,
+          26620
+        ],
+        "backup": "C:\\Users\\liguo\\AppData\\Local/iterate/iterate.before-close-tabs-20261009.exe"
+      },
+      "windows_relay": {
+        "pid": 18888,
+        "peer_connected": true,
+        "result": "Pass",
+        "local_device_listener": 0,
+        "server_announced": true,
+        "transport": "cloud_hub"
+      },
+      "mac": {
+        "result": "Pass",
+        "stage": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/close-tabs-r2/Iterate Cross Device.app",
+        "sha256": "a40eeee2794b923ff8ee8f9762362b572235fb9aa3b8bd852f6aadcf8efdafe5",
+        "certificate_sha1": "CF5D88FB8C77C4ED6BEBBE4A9503DACEAA0D2BE7",
+        "production_changed": true,
+        "installed": true,
+        "backup": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/close-tabs-r2/installed-before-close-tabs.app",
+        "daemon_pid": 17524,
+        "peer_status": {
+          "connected": true,
+          "enabled": true,
+          "peer_enabled": true,
+          "peer_name": "windows"
+        },
+        "preserved_pids": [
+          603,
+          66258,
+          37308
+        ],
+        "device_listener_5540": false,
+        "relay_restart_deferred": false
+      }
+    },
+    "limits": [
+      "Mac tab grouping and visibility were checked with native state and CoreGraphics; Mac keyboard cycling was not separately automated.",
+      "Existing production serving sessions were preserved; already-open GUI processes retain their loaded frontend until their request completes."
+    ],
+    "mac_unsigned_sha256": "d78cc00df1e2cb55855a42088f8e99180e9bd5f6a6506acca85ae27adc070054",
+    "actual_ui": {
+      "result": "Pass",
+      "artifact": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\public-desktop-20261009\\iterate-close-tabs.exe",
+      "sha256": "883A0CB42CB1AD8172295CBC6AD0978D9635973EA9CABD67774D885B093C6538",
+      "root": "G:/DevLocal/BuildTemp/iterate-desktop/public-desktop-20261009/actual-145522",
+      "steps": [
+        {
+          "result": "Pass",
+          "step": "paired-public-relay-with-unreachable-device-IPs"
+        },
+        {
+          "source_pid": 32636,
+          "step": "actual-source-window-arrives-at-paired-desktop-through-Hub",
+          "result": "Pass",
+          "mirror_pid": 26088
+        },
+        {
+          "result": "Pass",
+          "step": "server-connection-indicator-is-read-only"
+        },
+        {
+          "result": "Pass",
+          "step": "actual-settings-show-public-server-without-device-address-controls"
+        },
+        {
+          "result": "Pass",
+          "step": "peer-offline-does-not-report-server-disconnected"
+        },
+        {
+          "result": "Pass",
+          "step": "failed-send-retains-same-rendered-tab-and-draft"
+        },
+        {
+          "step": "peer-reconnect-preserves-existing-editor",
+          "result": "Pass",
+          "mirror_pid": 26088
+        },
+        {
+          "result": "Pass",
+          "step": "actual-server-outage-and-reconnect-update-indicator"
+        },
+        {
+          "result": "Pass",
+          "step": "actual-UI-send-invoked-with-verified-draft-and-foreground"
+        },
+        {
+          "result": "Pass",
+          "step": "actual-mirror-send-reaches-original-source-and-retires-window"
+        }
+      ],
+      "limit": "Two real Windows processes emulate desktop roles;actual Mac acceptance is separate."
+    },
+    "build_paths": {
+      "cargo_build_and_cache": "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+      "frontend": "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/frontend-dist",
+      "artifacts_and_temp": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\public-desktop-20261009",
+      "mac_install_stage": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/close-tabs-r2"
+    },
+    "acceptance_history": [
+      "Initial raw GUI test did not register requests; corrected to real HTTP serve entry.",
+      "Physical Send required verified foreground; harness added focus and exact draft assertions, then Passed.",
+      "Settings test label corrected to actual label; final settings and all workflow steps Passed.",
+      "Mac binary transfer failed before signing or installation; production Mac app unchanged.",
+      "Mac signing requirement extraction corrected to read stdout plus stderr before any production change; original signing identity and designated requirement verified.",
+      "Actual user reply from a Windows mirror reached its original Mac HTTP request; scripted expected text differed, so that older harness run remains Fail and is not counted as Pass.",
+      "Cancellation test fixture initially omitted Hub control. Added synthetic unfrozen control; all 51 tests then Passed.",
+      "UI harness matched actual reply-unconfirmed message and used native UIAutomation InvokePattern to avoid a physical click race. Final 10-step Windows workflow Passed.",
+      "First Mac installation precheck preserved an editing mirror and stopped before changes. The mirror ended naturally before retry, allowing normal daemon restart; production sessions stayed alive.",
+      "First two-tab Mac close check inspected next-window visibility before asynchronous presentation. Added observable visibility wait; final Windows and Mac workflows Passed."
+    ],
+    "maintenance_followup": "User reports Mac can ping Windows 10.8.0.4. Windows routes present; reverse ping/SSH to configured Mac 10.8.0.3 and server-side TCP/ICMP probe timeout. Server maps configured Mac to 10.8.0.3; its last handshake was 12:36:58, age 971 seconds at 12:53:09. Current Mac VPN address remains to be confirmed; cannot infer whole Mac internet availability from Iterate heartbeat.",
+    "updated_at": "2026-10-09T07:11:20.088115+00:00",
+    "mac_tabs": {
+      "config": {
+        "result": "Pass",
+        "config": "/Users/parker/Library/Application Support/iterate-cross-device/config/config.json",
+        "previous_mode": "windows",
+        "popup_display_mode": "tabs",
+        "other_settings_preserved": true,
+        "backup": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/mac-config-before-tabs.json"
+      },
+      "live": {
+        "result": "Pass",
+        "config_mode": "tabs",
+        "live_state": "/var/folders/bq/hjv9k46s7sx8bgfvb2x70zmm0000gp/T/iterate_popup_tabs.json",
+        "previous_live_mode": "windows",
+        "live_mode": "tabs",
+        "active_preserved": true,
+        "request_count": 1
+      },
+      "current": {
+        "popup_display_mode": "tabs",
+        "hub_source_age_seconds": 2,
+        "relay_age_seconds": 2,
+        "daemon_pid": 17524,
+        "peer_connected": true,
+        "system_settings_process_running": false
+      }
+    },
+    "actual_windows_mac_close": {
+      "scope": "Real installed Windows mirror close control over production HTTPS Hub",
+      "mirror_pid": 25064,
+      "unrelated_mirror_preserved": true,
+      "matching_mirror_closed": true,
+      "second_mirror_pid": 24620,
+      "close_control_invoked": true,
+      "second_background_hidden": true,
+      "tab_visible": true,
+      "result": "Pass",
+      "second_key": "89884971-ee54-407e-be6e-20a1840adeb8",
+      "next_tab_visible": true,
+      "switched_to_exact_owned_tab": true,
+      "source_key": "a066ecae-3277-45ce-9a0c-55cdd29a7842"
+    },
+    "actual_mac_ui": {
+      "result": "Pass",
+      "scope": "Real installed Mac source GUI and Windows mirror over production HTTPS Hub",
+      "serve_pid": 18132,
+      "port": 60482,
+      "source_key": "a066ecae-3277-45ce-9a0c-55cdd29a7842",
+      "source_pid": 18135,
+      "source_visible": true,
+      "title": "Public Mac close tabs 220a49e6",
+      "mac_tabs": {
+        "mode": "tabs",
+        "active_pid": 18135,
+        "focus_pid": null,
+        "geometry": {
+          "x": 48,
+          "y": 90,
+          "width": 1200,
+          "height": 1800
+        },
+        "tabs": [
+          {
+            "pid": 18135,
+            "request_id": "serve-1791529545045-c53a0ca0-2a32-4d33-a283-40aacedea0d3",
+            "title": "Public Mac close tabs 220a49e6",
+            "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+            "registered_at": "2026-10-09T07:05:48.363046+00:00",
+            "unread": false
+          },
+          {
+            "pid": 18220,
+            "request_id": "serve-1791529549416-4f912db0-866e-413c-ac57-141b3a02a54d",
+            "title": "Public Mac close tabs 220a49e6 keep",
+            "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+            "registered_at": "2026-10-09T07:05:54.032249+00:00",
+            "unread": true
+          }
+        ]
+      },
+      "second_source_pid": 18220,
+      "second_key": "89884971-ee54-407e-be6e-20a1840adeb8",
+      "second_title": "Public Mac close tabs 220a49e6 keep",
+      "mac_active_visible": true,
+      "mac_background_hidden": true,
+      "run": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-close-4052dcee",
+      "reply": {
+        "keep_going": false,
+        "user_input": "",
+        "response_source": "popup_closed",
+        "selected_options": [],
+        "file_paths": [],
+        "image_paths": [],
+        "metadata": {
+          "timestamp": "2026-10-09T07:06:45.225Z",
+          "request_id": "serve-1791529545045-c53a0ca0-2a32-4d33-a283-40aacedea0d3",
+          "source": "popup_closed",
+          "hui_snapshot": null,
+          "conversation_id": null,
+          "tree_id": null,
+          "current_node_id": null,
+          "node_id": null,
+          "parent_node_id": null,
+          "timeline_route_id": null,
+          "conversation_route_id": null,
+          "request_key": null,
+          "actual_request_id": null,
+          "run_id": "cross-device-reply:a066ecae-3277-45ce-9a0c-55cdd29a7842",
+          "generation": null,
+          "stale_of": null,
+          "superseded_by": null
+        }
+      },
+      "source_closed": true,
+      "unrelated_request_preserved": true,
+      "remaining_mac_tab_visible": true
+    },
+    "native_cross_device_tests": {
+      "result": "Pass",
+      "passed": 51,
+      "log": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\public-desktop-20261009\\close-tab-native-tests-r2.log"
+    },
+    "frontend_lint_baseline": {
+      "baseline": {
+        "exit": 1,
+        "errors": 15,
+        "rules": {
+          "antfu/consistent-list-newline": 9,
+          "style/max-statements-per-line": 5,
+          "vue/singleline-html-element-content-newline": 22,
+          "vue/component-name-in-template-casing": 1
+        }
+      },
+      "current": {
+        "exit": 1,
+        "errors": 15,
+        "rules": {
+          "antfu/consistent-list-newline": 9,
+          "style/max-statements-per-line": 5,
+          "vue/singleline-html-element-content-newline": 22,
+          "vue/component-name-in-template-casing": 1
+        }
+      }
+    },
+    "requirements": {
+      "public_desktop_transport": "Verified",
+      "readonly_server_indicator": "Verified",
+      "no_peer_pairing_address_controls": "Verified in actual UI",
+      "failed_send_retains_tab_and_draft": "Verified in actual UI",
+      "windows_closes_matching_mac_original_only": "Verified using two real Mac sources and Windows close control",
+      "mac_popup_display_mode_tabs": "Config and live state set; two real Mac windows group as tabs; arrival stays behind current window; closing advances to remaining window"
+    }
+  },
+  "mac_send_tab_handoff_20261009": {
+    "result": "Pass",
+    "baseline": {
+      "real_send_succeeded": true,
+      "blank_samples": 36,
+      "log": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\mac-tab-handoff-20261009\\mac-send-before-r2.log"
+    },
+    "native_tests": {
+      "passed": 11,
+      "failed": 0,
+      "log": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\mac-tab-handoff-20261009\\windows-popup-tests.log"
+    },
+    "real_mac_ui": {
+      "exact_reply_delivered": true,
+      "next_tab_same_window": true,
+      "window_frame_unchanged": true,
+      "foreground_preserved": true,
+      "blank_samples": 0,
+      "sample_count": 191,
+      "largest_sample_interval_ms": 35.51999999999998,
+      "evidence": "E:\\Github\\iterate-desktop\\.codex-evidence\\mac-sync-20261008\\mac-tab-send-ui.json"
+    },
+    "installation": {
+      "result": "Pass",
+      "stage": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-tab-handoff-20261009/r2/Iterate Cross Device.app",
+      "sha256": "6339725a100decd811fbb938aab13ffd6ccc0828cac142aa1204ae8e1c7a4a38",
+      "certificate_sha1": "CF5D88FB8C77C4ED6BEBBE4A9503DACEAA0D2BE7",
+      "production_changed": true,
+      "installed": true,
+      "backup": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/mac-tab-handoff-20261009/r2/installed-before-mac-handoff-r2.app",
+      "daemon_pid": 70156,
+      "peer_status": {
+        "connected": true,
+        "enabled": true,
+        "peer_enabled": true,
+        "peer_name": "windows"
+      },
+      "preserved_pids": [
+        603,
+        66258,
+        37308
+      ],
+      "device_listener_5540": false,
+      "relay_restart_deferred": false
+    },
+    "unsigned_sha256": "43a1208d10da79a220b2fd57b95ad5d28f212ff1ed17f4f7c0b19124e9647d6d",
+    "build_root": "G:\\DevLocal\\BuildTemp\\iterate-desktop\\mac-tab-handoff-20261009",
+    "cargo_target": "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+    "build_temp": "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/temp",
+    "cross_compile_caches": "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/cross",
+    "android": {
+      "changed": false,
+      "reinstall_required_for_this_desktop_update": false,
+      "installed_mobile_version_checked": false
+    },
+    "limits": [
+      "Native accessibility input and actual rendered Send button tested; physical typing not claimed.",
+      "Blank intervals checked at sampled CoreGraphics snapshots, not continuous video.",
+      "Failure recovery/request identity covered by native state regression tests; Mac failure UI not re-exercised in this update."
+    ]
+  }
+}

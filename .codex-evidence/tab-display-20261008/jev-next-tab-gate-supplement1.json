@@ -1,0 +1,12 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"tool\": \"jev_gate\",\n  \"model\": \"jev-latest\",\n  \"provider\": \"typesafe\",\n  \"truncated\": false,\n  \"action\": \"escalate\",\n  \"reason_codes\": [\n    \"review_required\",\n    \"claim_confidence_low\"\n  ],\n  \"review\": {\n    \"safe_to_apply\": 0.63,\n    \"scores\": {\n      \"correctness\": {\n        \"score\": 1.88,\n        \"confidence\": 0.82\n      },\n      \"spec_match\": {\n        \"score\": 1.89,\n        \"confidence\": 0.82\n      },\n      \"test_gap\": {\n        \"score\": 0.28,\n        \"confidence\": 0.58\n      },\n      \"blast_radius\": {\n        \"score\": 1.74,\n        \"confidence\": 0.59\n      }\n    },\n    \"weights\": {\n      \"correctness\": 0.4,\n      \"spec_match\": 0.3,\n      \"test_gap\": 0.15,\n      \"blast_radius\": 0.15\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5,\n      \"composite_floor\": 0.7\n    },\n    \"action\": \"review\",\n    \"composite\": 0.8079999999999999\n  },\n  \"verification\": {\n    \"action\": \"escalate\",\n    \"summary\": {\n      \"verified\": 2,\n      \"contradicted\": 0,\n      \"unsupported\": 0,\n      \"needs_review\": 1,\n      \"invalid_response\": 0\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5\n    },\n    \"results\": [\n      {\n        \"claim\": \"候选的中间Tab发送后右侧Tab自动获得前台，末尾发送后第一个Tab自动获得前台，实际UI验收通过。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 0.91,\n        \"probabilities\": {\n          \"unsupported\": 0.05,\n          \"verified\": 0.94,\n          \"contradicted\": 0.01\n        },\n        \"action\": \"auto\"\n      },\n      {\n        \"claim\": \"此次不修改共享accepted回调契约；未发送成功不会调用Tab completion。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 0.46,\n        \"probabilities\": {\n          \"unsupported\": 0.19,\n          \"verified\": 0.64,\n          \"contradicted\": 0.17\n        },\n        \"action\": \"escalate\"\n      }\n    ]\n  },\n  \"usage\": {\n    \"input_tokens\": 12319,\n    \"output_tokens\": 158\n  }\n}"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 3
+}

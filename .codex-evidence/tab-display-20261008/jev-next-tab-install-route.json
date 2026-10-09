@@ -1,0 +1,12 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"tool\": \"jev_decide\",\n  \"model\": \"jev-latest\",\n  \"provider\": \"typesafe\",\n  \"recommendation\": {\n    \"selected\": \"install_tested_candidate_retain_review\",\n    \"escaped\": false,\n    \"confidence\": 0.94,\n    \"probabilities\": {\n      \"install_tested_candidate_retain_review\": 0.95,\n      \"retain_old_gui_review_unresolved\": 0.05,\n      \"ask_user\": 0,\n      \"investigate\": 0,\n      \"none\": 0\n    }\n  },\n  \"requirements_checked\": 3,\n  \"checks\": [\n    {\n      \"candidate\": \"install_tested_candidate_retain_review\",\n      \"requirement\": 0,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"install_tested_candidate_retain_review\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"install_tested_candidate_retain_review\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"retain_old_gui_review_unresolved\",\n      \"requirement\": 0,\n      \"answer\": \"contradicted\"\n    },\n    {\n      \"candidate\": \"retain_old_gui_review_unresolved\",\n      \"requirement\": 1,\n      \"answer\": \"supported\"\n    },\n    {\n      \"candidate\": \"retain_old_gui_review_unresolved\",\n      \"requirement\": 2,\n      \"answer\": \"supported\"\n    }\n  ],\n  \"warnings\": [],\n  \"usage\": {\n    \"input_tokens\": 2360,\n    \"output_tokens\": 320\n  }\n}"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 3
+}

@@ -1,0 +1,12 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"tool\": \"jev_gate\",\n  \"model\": \"jev-latest\",\n  \"provider\": \"typesafe\",\n  \"truncated\": false,\n  \"action\": \"escalate\",\n  \"reason_codes\": [\n    \"review_escalated\"\n  ],\n  \"review\": {\n    \"safe_to_apply\": 0.28,\n    \"scores\": {\n      \"correctness\": {\n        \"score\": 1.95,\n        \"confidence\": 0.93\n      },\n      \"spec_match\": {\n        \"score\": 1.89,\n        \"confidence\": 0.83\n      },\n      \"test_gap\": {\n        \"score\": 0.15,\n        \"confidence\": 0.76\n      },\n      \"blast_radius\": {\n        \"score\": 1.86,\n        \"confidence\": 0.8\n      }\n    },\n    \"weights\": {\n      \"correctness\": 0.4,\n      \"spec_match\": 0.3,\n      \"test_gap\": 0.15,\n      \"blast_radius\": 0.15\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5,\n      \"composite_floor\": 0.7\n    },\n    \"action\": \"escalate\",\n    \"composite\": 0.82275\n  },\n  \"verification\": {\n    \"action\": \"auto\",\n    \"summary\": {\n      \"verified\": 2,\n      \"contradicted\": 0,\n      \"unsupported\": 0,\n      \"needs_review\": 0,\n      \"invalid_response\": 0\n    },\n    \"thresholds\": {\n      \"auto_accept\": 0.8,\n      \"review_at\": 0.5\n    },\n    \"results\": [\n      {\n        \"claim\": \"实测中间标签发送后，右侧标签自动成为前台。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 1,\n        \"probabilities\": {\n          \"unsupported\": 0,\n          \"contradicted\": 0,\n          \"verified\": 1\n        },\n        \"action\": \"auto\"\n      },\n      {\n        \"claim\": \"实测标签间有独立边框和3像素间距。\",\n        \"verdict\": \"verified\",\n        \"confidence\": 0.97,\n        \"probabilities\": {\n          \"unsupported\": 0.01,\n          \"contradicted\": 0.01,\n          \"verified\": 0.98\n        },\n        \"action\": \"auto\"\n      }\n    ]\n  },\n  \"usage\": {\n    \"input_tokens\": 12619,\n    \"output_tokens\": 158\n  }\n}"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 3
+}

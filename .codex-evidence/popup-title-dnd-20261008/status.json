@@ -1,0 +1,53 @@
+﻿{
+    "title_investigation":  {
+                                "status":  "implemented_and_installed",
+                                "platform":  "Windows",
+                                "session_id":  "01a11978-8969-7ec0-98e1-a86c80e9dd25",
+                                "native_session_title":  "启动 F 组缺陷修复",
+                                "explicit_popup_titles":  [
+                                                              "SSS-BUG-F：10分钟后继续",
+                                                              "SSS-BUG-F：定位无法操作的窗口",
+                                                              "SSS-BUG-F：为你保留手工操作时段"
+                                                          ],
+                                "source":  "Actual call_zhi arguments.conversation_title in local Codex rollout, matched with cross-device request registrations",
+                                "code":  "src/bin/mcp-server.rs:1760 explicit title takes precedence over session title",
+                                "conclusion":  "Caller supplied changing per-step titles; MCP prioritizes them over stable session name",
+                                "implemented":  true
+                            },
+    "todo":  {
+                 "id":  "popup-dnd-stacking",
+                 "status":  "functional_acceptance_passed_review_unresolved",
+                 "user_request":  "我都已经开了免干扰了，总是弹窗遮挡我正在编辑的弹窗信息啊！Iterate自己的弹窗，新弹出的放到最后那层。",
+                 "platform":  "Windows",
+                 "requirements":  [
+                                      "免干扰开启时，新出现的 Iterate 弹窗位于已有 Iterate 弹窗之后",
+                                      "新弹窗不抢焦点、不遮挡正在编辑的 Iterate 弹窗",
+                                      "当前输入内容、光标和已有窗口顺序保持",
+                                      "用户主动切换到新弹窗时仍能正常查看与回复"
+                                  ],
+                 "observed_config":  {
+                                         "focus_popup_on_show":  false,
+                                         "always_on_top":  false
+                                     },
+                 "code_observation":  "center_window nonfocusing Windows branch uses SW_SHOWNOACTIVATE but has no explicit sibling z-order placement",
+                 "acceptance":  "至少两个真实 Iterate 弹窗：在旧窗口输入时连续产生新窗口，核对焦点、输入和原生窗口层级；再主动切换新窗口并正常回复",
+                 "implemented":  true
+             },
+    "build":  {
+                  "compiled_on":  "Windows",
+                  "source":  "G:/DevLocal/BuildTemp/iterate-desktop/mac-sync-20261008/source",
+                  "root":  "G:/DevLocal/BuildTemp/iterate-desktop/popup-title-dnd-20261008",
+                  "sha256":  "F1D1A9DAB99862C9AEDEA14F63EE31FF9DA637EB23CCE566FADBAE38D4EF9717",
+                  "installed":  true,
+                  "cargo_cache":  "G:/DevLocal/BuildTemp/iterate-desktop/aliyun-center/source/cargo-target",
+                  "superseded_by_phone_receipt_sha256":  "D727CAB8305FCB253BA1DE5945C50C0108D68F2018FDE0C7BDB9F41C7EAEFBBA"
+              },
+    "tests":  {
+                  "candidate_ui":  "acceptance-155557 Pass",
+                  "mcp_passed":  21,
+                  "jev_gate":  "escalate retained after two supplements; fact claims verified auto, code review confidence unresolved; no concrete defect returned",
+                  "title_passed":  3,
+                  "installed_ui":  "acceptance-160109 Pass",
+                  "baseline_control":  "acceptance-155910 expected failure: new popup covered old"
+              }
+}

@@ -1,0 +1,86 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated"
+  ],
+  "review": {
+    "safe_to_apply": 0.38,
+    "scores": {
+      "correctness": {
+        "score": 1.68,
+        "confidence": 0.5
+      },
+      "spec_match": {
+        "score": 1.83,
+        "confidence": 0.74
+      },
+      "test_gap": {
+        "score": 0.38,
+        "confidence": 0.41
+      },
+      "blast_radius": {
+        "score": 1.67,
+        "confidence": 0.5
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.75675
+  },
+  "verification": {
+    "action": "auto",
+    "summary": {
+      "verified": 2,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 0,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "回归测试向本地HTTP服务发出了completed请求的正确source_request_id、version和registration_key，尽管前面有缺失注册、400和503；未给live请求发close。",
+        "verdict": "verified",
+        "confidence": 0.88,
+        "probabilities": {
+          "contradicted": 0.01,
+          "verified": 0.92,
+          "unsupported": 0.07
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "旧native身份被关闭后，actions中的原digest、unknown receipt、history_ref未改动。",
+        "verdict": "verified",
+        "confidence": 0.91,
+        "probabilities": {
+          "contradicted": 0,
+          "verified": 0.9400000000000001,
+          "unsupported": 0.06
+        },
+        "action": "auto"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 7669,
+    "output_tokens": 158
+  }
+}

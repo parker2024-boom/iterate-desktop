@@ -1,0 +1,76 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_below_auto_accept"
+  ],
+  "review": {
+    "safe_to_apply": 0.38,
+    "scores": {
+      "correctness": {
+        "score": 1.75,
+        "confidence": 0.62
+      },
+      "spec_match": {
+        "score": 1.85,
+        "confidence": 0.78
+      },
+      "test_gap": {
+        "score": 0.65,
+        "confidence": 0.23
+      },
+      "blast_radius": {
+        "score": 1.96,
+        "confidence": 0.95
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.73175
+  },
+  "verification": {
+    "action": "review",
+    "summary": {
+      "verified": 1,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 1,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "Windows发布候选465BAF...在真实UI验收中通过默认分窗、选择标签页并保存、保持原616x939外框、后台新请求保留焦点与光标、两草稿切换、精确回复到tabs-acceptance-1、切回分窗及新进程加载保存选择。",
+        "verdict": "verified",
+        "confidence": 0.71,
+        "probabilities": {
+          "verified": 0.8099999999999999,
+          "contradicted": 0.1,
+          "unsupported": 0.09
+        },
+        "action": "review"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 9674,
+    "output_tokens": 118
+  }
+}

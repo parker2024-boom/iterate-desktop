@@ -1,0 +1,352 @@
+{
+    "root":  "G:\\DevLocal\\BuildTemp\\iterate-desktop\\tab-title-20261009\\ui-final\\native-acceptance-113407",
+    "sha256":  "2D18F622BE61DF6394CCAD118C752FBD128B7885EB97B74AB97BA7ED7FBD4B86",
+    "result":  "Pass",
+    "transitions":  [
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  214,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  267,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  270,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  2,
+                            "from":  1,
+                            "samples":  147,
+                            "input":  "Ctrl+Tab",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  2,
+                            "samples":  143,
+                            "input":  "Ctrl+Tab",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  149,
+                            "input":  "Ctrl+Tab",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  207,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  291,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  203,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  202,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  203,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  272,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  283,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  275,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  277,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  198,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  191,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  194,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  265,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  276,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  206,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  198,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  195,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  208,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  280,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  200,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  271,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  281,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  0,
+                            "from":  1,
+                            "samples":  204,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        },
+                        {
+                            "exposed_samples":  0,
+                            "to":  1,
+                            "from":  0,
+                            "samples":  271,
+                            "input":  "click",
+                            "exposed_ms":  0,
+                            "result":  "Pass"
+                        }
+                    ],
+    "steps":  [
+                  {
+                      "result":  "Pass",
+                      "step":  "default-separate-windows-with-title"
+                  },
+                  {
+                      "step":  "enable-tabs-through-settings-and-persist",
+                      "result":  "Pass",
+                      "width":  616,
+                      "height":  939
+                  },
+                  {
+                      "step":  "taller-tab-is-the-only-conversation-title",
+                      "result":  "Pass",
+                      "duplicate_title_text_nodes":  0,
+                      "tab_height":  40
+                  },
+                  {
+                      "step":  "tabs-visibly-separated",
+                      "result":  "Pass",
+                      "gap":  3
+                  },
+                  {
+                      "step":  "background-tab-keeps-window-focus-caret",
+                      "result":  "Pass",
+                      "draft":  "abcXdef"
+                  },
+                  {
+                      "result":  "Pass",
+                      "step":  "tab-switch-independent-drafts"
+                  },
+                  {
+                      "result":  "Pass",
+                      "step":  "plain-tab-no-longer-minimizes-popup"
+                  },
+                  {
+                      "step":  "ctrl-tab-cycles-next-wrap-first",
+                      "result":  "Pass",
+                      "sequence":  [
+                                       1,
+                                       2,
+                                       0,
+                                       1
+                                   ]
+                  },
+                  {
+                      "step":  "repeated-switch-no-desktop-exposure",
+                      "result":  "Pass",
+                      "transitions":  30,
+                      "sampling_ms":  2
+                  },
+                  {
+                      "step":  "send-middle-advances-to-right-tab",
+                      "result":  "Pass",
+                      "actual_request_id":  "tabs-acceptance-1"
+                  },
+                  {
+                      "step":  "send-last-wraps-to-first-and-preserves-draft",
+                      "result":  "Pass",
+                      "actual_request_id":  "tabs-acceptance-2"
+                  },
+                  {
+                      "result":  "Pass",
+                      "step":  "ctrl-tab-one-tab-keeps-current"
+                  },
+                  {
+                      "result":  "Pass",
+                      "step":  "return-to-separate-windows-restores-title"
+                  },
+                  {
+                      "result":  "Pass",
+                      "step":  "saved-tabs-mode-keeps-title-in-tab-only"
+                  }
+              ],
+    "artifact":  "G:/DevLocal/BuildTemp/iterate-desktop/tab-title-20261009/iterate-title-final.exe"
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-06T09:16:01.306Z" hostname="PARKER" time="1.672">
+  <properties/>
+  <testcase name="serverCloseEndsReceiveFlowSoViewModelCanReconnect" classname="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" time="0.281"/>
+  <testcase name="cancellationUnblocksBackpressuredSocketReader" classname="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" time="0.115"/>
+  <testcase name="reconnectReceivesNewRequestAndUsesNewSocketForSync" classname="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" time="0.011"/>
+  <testcase name="rejectedHandshakeEndsFlowWithOneDisconnectedEvent" classname="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" time="0.008"/>
+  <testcase name="snapshotBurstDoesNotSilentlyDropPendingRequests" classname="com.kexin94yyds.iterate.mobile.BridgeClientConnectionTest" time="1.257"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

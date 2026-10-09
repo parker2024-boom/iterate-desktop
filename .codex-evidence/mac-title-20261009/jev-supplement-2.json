@@ -1,0 +1,120 @@
+{
+  "tool": "jev_gate",
+  "model": "jev-latest",
+  "provider": "typesafe",
+  "truncated": false,
+  "action": "escalate",
+  "reason_codes": [
+    "review_escalated",
+    "claim_confidence_below_auto_accept"
+  ],
+  "review": {
+    "safe_to_apply": 0.49,
+    "scores": {
+      "correctness": {
+        "score": 1.87,
+        "confidence": 0.82
+      },
+      "spec_match": {
+        "score": 1.89,
+        "confidence": 0.82
+      },
+      "test_gap": {
+        "score": 0.76,
+        "confidence": 0.41
+      },
+      "blast_radius": {
+        "score": 1.64,
+        "confidence": 0.47
+      }
+    },
+    "weights": {
+      "correctness": 0.4,
+      "spec_match": 0.3,
+      "test_gap": 0.15,
+      "blast_radius": 0.15
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5,
+      "composite_floor": 0.7
+    },
+    "action": "escalate",
+    "composite": 0.7775
+  },
+  "verification": {
+    "action": "review",
+    "summary": {
+      "verified": 5,
+      "contradicted": 0,
+      "unsupported": 0,
+      "needs_review": 1,
+      "invalid_response": 0
+    },
+    "thresholds": {
+      "auto_accept": 0.8,
+      "review_at": 0.5
+    },
+    "results": [
+      {
+        "claim": "已安装 Mac 的可信本地请求在保存和发布前使用真实会话名称；原有请求ID、thread ID和回复路由不被归一化修改。安装后真实 Mac 界面标题与本地发送验收通过。",
+        "verdict": "verified",
+        "confidence": 0.94,
+        "probabilities": {
+          "verified": 0.96,
+          "contradicted": 0.01,
+          "unsupported": 0.03
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "已安装 Windows 接收服务在明确移除 source token 环境变量后成功连接 Hub；实际跨设备投递和回复成功，说明已有当前用户 DPAPI 凭据可用于该启动场景。",
+        "verdict": "verified",
+        "confidence": 0.79,
+        "probabilities": {
+          "verified": 0.86,
+          "contradicted": 0.02,
+          "unsupported": 0.12
+        },
+        "action": "review"
+      },
+      {
+        "claim": "真实已安装 Mac 请求自动投递到已安装 Windows，Windows 显示正确标题，物理输入并点击发送后，Mac HTTP请求收到完全一致的回复。当前跨Windows运行Mac锁屏，其Mac原生标题显示依据此前安装后验收，而非锁屏运行的AX断言。",
+        "verdict": "verified",
+        "confidence": 0.89,
+        "probabilities": {
+          "verified": 0.93,
+          "contradicted": 0.04,
+          "unsupported": 0.03
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "最终源码的6项凭据回归测试和2项会话标题测试全部通过，其中新增空密文、解密后无效JSON与实际Windows重解析点拒绝验证。",
+        "verdict": "verified",
+        "confidence": 0.97,
+        "probabilities": {
+          "verified": 0.98,
+          "contradicted": 0,
+          "unsupported": 0.02
+        },
+        "action": "auto"
+      },
+      {
+        "claim": "Mac和Windows更新均已安装，记录中保留了各自可回滚的旧版本路径。",
+        "verdict": "verified",
+        "confidence": 0.88,
+        "probabilities": {
+          "verified": 0.92,
+          "contradicted": 0.01,
+          "unsupported": 0.07
+        },
+        "action": "auto"
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 12674,
+    "output_tokens": 278
+  }
+}

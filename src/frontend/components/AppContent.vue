@@ -1085,9 +1085,6 @@ watch(() => props.mcpRequest, async (newRequest) => {
     showPopupSettings.value = false
   }
 
-  await syncConversationRequestNode(newRequest)
-  await refreshNativeHistoryBinding()
-
   const nextProjectPath = resolveDisplayProjectPath(newRequest)
   if (nextProjectPath && nextProjectPath !== lastValidProjectPath.value) {
     lastValidProjectPath.value = nextProjectPath
@@ -1095,14 +1092,14 @@ watch(() => props.mcpRequest, async (newRequest) => {
   }
 
   // 更新窗口注册（使用新的项目路径）
-  if (nextProjectPath) {
-    try {
-      await syncWindowRegistration(nextProjectPath, newRequest)
-    }
-    catch (error) {
-      console.error('更新窗口注册失败:', error)
-    }
+  try {
+    await syncWindowRegistration(nextProjectPath, newRequest)
   }
+  catch (error) {
+    console.error('更新窗口注册失败:', error)
+  }
+  await syncConversationRequestNode(newRequest)
+  await refreshNativeHistoryBinding()
 }, { immediate: true, deep: true })
 
 // 全局键盘事件处理器
@@ -1294,6 +1291,13 @@ watch(() => props.showMcpPopup, async (newValue) => {
 })
 
 onMounted(async () => {
+  // Tab admission must complete even when a history or Bridge read fails.
+  try {
+    await syncWindowRegistration(effectiveProjectPath.value, props.mcpRequest)
+  }
+  catch (error) {
+    console.error('注册窗口实例失败:', error)
+  }
   // 将消息实例传递给父组件
   emit('messageReady', message)
   await showPostUpdateAutomationNotice()
@@ -1672,14 +1676,6 @@ onMounted(async () => {
       unlistenConversationNodeRecorded = null
     }
   })
-
-  // 注册当前窗口实例
-  try {
-    await syncWindowRegistration(effectiveProjectPath.value, props.mcpRequest)
-  }
-  catch (error) {
-    console.error('注册窗口实例失败:', error)
-  }
 
   // 窗口恢复时立即补偿拉取缓存的 action（防止最小化期间 throttle 导致延迟）
   visibilityHandler = () => {

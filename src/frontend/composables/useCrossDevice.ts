@@ -5,6 +5,7 @@ import { publishCompletedMcpRequest } from '../services/bridgeRequestClosure'
 interface CrossDeviceStatus {
   enabled: boolean
   connected: boolean
+  server_connected?: boolean
   connected_ip?: string
   using_backup?: boolean
   peer_enabled?: boolean
@@ -41,7 +42,7 @@ export async function refreshCrossDevice() {
       await invoke('exit_app')
   }
   catch (error) {
-    state.value = { ...state.value, connected: false, error: String(error) }
+    state.value = { ...state.value, connected: false, server_connected: false, error: String(error) }
   }
   finally { reading = false }
 }
@@ -69,6 +70,7 @@ export function useCrossDevice() {
     return state.value.local_only ? '跨设备已开启 · 本次请求仅在本机处理（新请求生效；附件不镜像）' : '跨设备已开启 · 两端已连接，点击关闭'
   })
   const color = computed(() => !state.value.enabled ? '#4b5563' : state.value.connected && state.value.peer_enabled ? '#15803d' : '#b45309')
+  const serverTitle = computed(() => state.value.server_connected ? '服务器已连接' : '服务器未连接')
   async function toggle() {
     if (busy.value)
       return
@@ -81,5 +83,5 @@ export function useCrossDevice() {
     }
     finally { busy.value = false }
   }
-  return { crossState: state, crossBusy: busy, crossTitle: title, crossColor: color, toggleCrossDevice: toggle }
+  return { crossState: state, crossBusy: busy, crossTitle: title, crossColor: color, serverTitle, toggleCrossDevice: toggle }
 }

@@ -1,0 +1,1101 @@
+{
+  "result": "Pass",
+  "scope": "Real installed Mac native editor and send button over production HTTPS Hub",
+  "serve_pid": 70188,
+  "port": 61561,
+  "source_key": "f77cb9fa-7564-4ab6-9df2-0a0610d16351",
+  "source_pid": 70190,
+  "source_visible": true,
+  "title": "Public Mac send tabs 2ac404f3",
+  "mac_tabs": {
+    "mode": "tabs",
+    "active_pid": 70190,
+    "focus_pid": null,
+    "focus_guard": null,
+    "geometry": {
+      "x": 48,
+      "y": 90,
+      "width": 1200,
+      "height": 1800
+    },
+    "tabs": [
+      {
+        "pid": 70190,
+        "request_id": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+        "title": "Public Mac send tabs 2ac404f3",
+        "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-send-70b2d5e2",
+        "registered_at": "2026-10-09T09:40:19.712050+00:00",
+        "unread": false
+      },
+      {
+        "pid": 70266,
+        "request_id": "serve-1791538820633-87f0f0fb-ef72-46de-b05e-a4ad4152157d",
+        "title": "Public Mac send tabs 2ac404f3 keep",
+        "project_path": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-send-70b2d5e2",
+        "registered_at": "2026-10-09T09:40:23.582246+00:00",
+        "unread": true
+      }
+    ]
+  },
+  "second_source_pid": 70266,
+  "second_key": "dc22e02b-2fbc-4142-a293-06b5ee685e54",
+  "second_title": "Public Mac send tabs 2ac404f3 keep",
+  "mac_active_visible": true,
+  "mac_background_hidden": true,
+  "run": "/Users/parker/Library/Caches/iterate-build/aliyun-center-20261004/public-desktop-20261009/actual-mac-send-70b2d5e2",
+  "source_frame": {
+    "kCGWindowAlpha": 1.0,
+    "kCGWindowBounds": {
+      "Height": 900.0,
+      "Width": 600.0,
+      "X": 24.0,
+      "Y": 45.0
+    },
+    "kCGWindowIsOnscreen": true,
+    "kCGWindowLayer": 0,
+    "kCGWindowMemoryUsage": 2288,
+    "kCGWindowNumber": 703,
+    "kCGWindowOwnerName": "Iterate Cross Device",
+    "kCGWindowOwnerPID": 70190,
+    "kCGWindowSharingState": 0,
+    "kCGWindowStoreType": 1
+  },
+  "target_frame_before": {
+    "kCGWindowAlpha": 1.0,
+    "kCGWindowBounds": {
+      "Height": 900.0,
+      "Width": 600.0,
+      "X": 540.0,
+      "Y": 95.0
+    },
+    "kCGWindowLayer": 0,
+    "kCGWindowMemoryUsage": 2288,
+    "kCGWindowNumber": 708,
+    "kCGWindowOwnerName": "Iterate Cross Device",
+    "kCGWindowOwnerPID": 70266,
+    "kCGWindowSharingState": 0,
+    "kCGWindowStoreType": 1
+  },
+  "actual_ui": {
+    "input": "real AXValue input in rendered text area",
+    "send": "real AXPress on rendered send button",
+    "verified_draft": "native Mac tab send acceptance Public Mac send tabs 2ac404f3"
+  },
+  "reply": {
+    "keep_going": true,
+    "user_input": "native Mac tab send acceptance Public Mac send tabs 2ac404f3",
+    "response_source": "popup",
+    "selected_options": [],
+    "file_paths": [],
+    "image_paths": [],
+    "metadata": {
+      "timestamp": "2026-10-09T09:40:24.683Z",
+      "request_id": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+      "source": "popup",
+      "hui_snapshot": null,
+      "conversation_id": "4b783c50-2dde-4390-955a-aab6876c4e0c",
+      "tree_id": "4b783c50-2dde-4390-955a-aab6876c4e0c",
+      "current_node_id": "a951d8d0-a2de-4f52-be50-d7995172c1c7",
+      "node_id": "a951d8d0-a2de-4f52-be50-d7995172c1c7",
+      "parent_node_id": "98a353b5-d5b6-4e1b-9813-f0cf965d63b2",
+      "timeline_route_id": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+      "conversation_route_id": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+      "request_key": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+      "actual_request_id": "serve-1791538818107-ed64307f-8deb-46ae-8ce2-015580e7a4a7",
+      "run_id": "cross-device-reply:f77cb9fa-7564-4ab6-9df2-0a0610d16351",
+      "generation": null,
+      "stale_of": null,
+      "superseded_by": null
+    }
+  },
+  "source_closed": true,
+  "unrelated_request_preserved": true,
+  "remaining_mac_tab_visible": true,
+  "blank_samples": 0,
+  "target_frame_after": {
+    "kCGWindowAlpha": 1.0,
+    "kCGWindowBounds": {
+      "Height": 900.0,
+      "Width": 600.0,
+      "X": 24.0,
+      "Y": 45.0
+    },
+    "kCGWindowIsOnscreen": true,
+    "kCGWindowLayer": 0,
+    "kCGWindowMemoryUsage": 2288,
+    "kCGWindowNumber": 708,
+    "kCGWindowOwnerName": "Iterate Cross Device",
+    "kCGWindowOwnerPID": 70266,
+    "kCGWindowSharingState": 0,
+    "kCGWindowStoreType": 1
+  },
+  "same_native_window": true,
+  "same_window_frame": true,
+  "selected_tab_foreground": true,
+  "sample_count": 191,
+  "largest_sample_interval_ms": 35.51999999999998,
+  "transition_samples": [
+    {
+      "ms": 8.93,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 22.69,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 37.08,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 52.77,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 67.55,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 82.43,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 95.76,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 108.62,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 121.23,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 132.47,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 144.42,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 158.66,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 172.7,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 185.05,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 198.92,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 215.01,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 227.02,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 239.52,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 250.61,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 269.04,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 282.29,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 296.64,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 314.09,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 327.89,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 345.76,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 359.82,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 373.6,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 387.52,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 403.5,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 418.79,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 433.73,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 453.44,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 468.91,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 482.86,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 499.9,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 516.64,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 530.01,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 545.32,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 558.04,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 568.63,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 579.31,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 593.65,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 603.87,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 614.36,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 628.44,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 641.24,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 660.04,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 672.84,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 686.72,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 698.55,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 711.19,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 724.21,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 740.98,
+      "source_visible": true,
+      "target_visible": false
+    },
+    {
+      "ms": 765.67,
+      "source_visible": true,
+      "target_visible": true
+    },
+    {
+      "ms": 784.77,
+      "source_visible": true,
+      "target_visible": true
+    },
+    {
+      "ms": 810.19,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 825.06,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 849.57,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 885.09,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 898.04,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 912.36,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 924.64,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 936.74,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 948.78,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 962.21,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 976.06,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 990.34,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1006.62,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1019.8,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1032.43,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1044.53,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1059.0,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1070.15,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1082.31,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1095.01,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1107.84,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1117.04,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1129.81,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1141.5,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1153.14,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1164.86,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1178.7,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1189.86,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1200.75,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1214.6,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1226.52,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1238.2,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1250.75,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1262.12,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1272.94,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1284.4,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1297.75,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1311.18,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1322.71,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1335.65,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1347.14,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1358.41,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1371.33,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1387.13,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1401.75,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1416.41,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1428.22,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1440.54,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1451.18,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1461.94,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1474.57,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1487.39,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1501.04,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1514.32,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1525.04,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1535.18,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1544.98,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1556.92,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1566.95,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1577.3,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1588.46,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1597.89,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1609.7,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1620.92,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1632.84,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1643.5,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1653.85,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1665.35,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1678.38,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1689.34,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1703.07,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1714.65,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1725.2,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1738.33,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1752.55,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1765.08,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1775.48,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1786.19,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1795.76,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1807.14,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1818.97,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1836.03,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1847.45,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1858.14,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1870.0,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1880.11,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1892.07,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1901.75,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1912.99,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1923.05,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1934.5,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1949.27,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1962.84,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1976.15,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 1988.53,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2000.7,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2011.19,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2022.1,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2035.25,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2047.19,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2058.1,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2070.36,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2082.46,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2091.81,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2102.96,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2113.35,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2123.32,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2133.83,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2146.19,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2158.88,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2170.68,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2182.38,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2194.17,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2206.01,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2219.43,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2232.81,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2242.03,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2254.18,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2265.6,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2275.56,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2286.5,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2297.44,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2308.03,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2320.13,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2330.77,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2344.44,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2355.47,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2365.14,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2375.55,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2387.7,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2399.52,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2410.95,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2421.59,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2432.48,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2442.24,
+      "source_visible": false,
+      "target_visible": true
+    },
+    {
+      "ms": 2452.27,
+      "source_visible": false,
+      "target_visible": true
+    }
+  ],
+  "installed_signed_sha256": "6339725a100decd811fbb938aab13ffd6ccc0828cac142aa1204ae8e1c7a4a38",
+  "test_processes_closed": true,
+  "existing_services_preserved": [
+    603,
+    66258,
+    37308
+  ]
+}
