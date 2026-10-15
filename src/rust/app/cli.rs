@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
-fn instance_debug_log(tag: &str, message: impl AsRef<str>) {
+pub(crate) fn instance_debug_log(tag: &str, message: impl AsRef<str>) {
     let line = format!(
         "{} [iterate-cli:{}] {} {}\n",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
@@ -59,7 +59,7 @@ fn local_bridge_base_url_from_override(value: Option<String>) -> String {
     }
 }
 
-fn local_bridge_base_url() -> String {
+pub(crate) fn local_bridge_base_url() -> String {
     local_bridge_base_url_from_override(std::env::var("ITERATE_LOCAL_BRIDGE_BASE_URL").ok())
 }
 
@@ -1467,6 +1467,129 @@ fn clean_dialog_dismissal_response(
     })
 }
 
+/// Shared normalization for the original popup and the conversation consumer.
+async fn accepted_dialog_response(
+    response: &serde_json::Value,
+    request_id: &String,
+    cross_registration: &Option<crate::cross_device::Registration>,
+) -> DialogResponse {
+if response.as_str() == Some("CANCELLED") {
+    return DialogResponse {
+        keep_going: false,
+        response_source: crate::conversation::POPUP_CLOSED_SOURCE.to_string(),
+        error: None,
+        ..Default::default()
+    };
+}
+
+let raw_user_input = response
+    .get("user_input")
+    .and_then(|v| v.as_str())
+    .unwrap_or("")
+    .to_string();
+let submitted_options: Vec<String> = response
+    .get("selected_options")
+    .and_then(|v| v.as_array())
+    .map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    })
+    .unwrap_or_default();
+let submitted_source = response
+    .get("metadata")
+    .and_then(|v| v.get("source"))
+    .and_then(|v| v.as_str())
+    .unwrap_or("")
+    .to_string();
+let explicit_end =
+    crate::conversation::is_explicit_conversation_end_response(
+        &raw_user_input,
+        &submitted_options,
+    );
+let popup_closed =
+    crate::conversation::is_popup_closed_response_source(&submitted_source);
+let interaction_ended = explicit_end || popup_closed;
+
+// 结束当前交互时不携带选项或附件进入业务响应。
+let image_paths = if interaction_ended {
+    vec![]
+} else if let Some(images) =
+    response.get("images").and_then(|v| v.as_array())
+{
+    save_images_to_files(images)
+} else {
+    vec![]
+};
+
+let response_source = if explicit_end {
+    crate::conversation::EXPLICIT_CONVERSATION_END_SOURCE.to_string()
+} else if popup_closed {
+    crate::conversation::POPUP_CLOSED_SOURCE.to_string()
+} else {
+    submitted_source
+};
+let file_paths: Vec<String> = if interaction_ended {
+    vec![]
+} else {
+    response
+        .get("file_paths")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+};
+let mut metadata = response
+    .get("metadata")
+    .cloned()
+    .and_then(|value| {
+        serde_json::from_value::<crate::mcp::ResponseMetadata>(value).ok()
+    })
+    .unwrap_or_default();
+// The HTTP handler must confirm the registration
+// belonging to this serve request, never an ID
+// supplied inside a remote response body.
+if cross_registration.is_some() {
+    metadata.request_id = Some(request_id.clone());
+}
+if interaction_ended {
+    metadata.source = Some(response_source.clone());
+}
+let user_input = enrich_goal_user_input_with_attachment_paths(
+    raw_user_input,
+    &response_source,
+    &file_paths,
+    &image_paths,
+);
+
+let dialog_response = DialogResponse {
+    keep_going: !interaction_ended,
+    user_input,
+    response_source,
+    selected_options: if interaction_ended {
+        vec![]
+    } else {
+        submitted_options
+    },
+    file_paths,
+    image_paths,
+    metadata,
+    source_request_id: cross_registration.as_ref().map(|_| request_id.clone()),
+    error: None,
+};
+if let Some(registration) = &cross_registration {
+    if let Err(error) = crate::cross_device::mark_source_prepared(registration, &response) {
+        instance_debug_log("[serve-request-cross-device-prepare-failed]", format!("request_id={}, error={}", request_id, error));
+    } else if let Err(error) = crate::cross_device::record_accepted_response(registration, &response).await {
+        instance_debug_log("[serve-request-cross-device-history-failed]", format!("request_id={}, error={}", request_id, error));
+    }
+}
+return dialog_response;
+}
+
 /// 处理单个对话请求（启动 GUI）
 async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
     // 创建临时请求文件
@@ -1568,6 +1691,35 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
         let _ = std::fs::remove_file(&request_file);
         let _ = std::fs::remove_file(&response_route_file);
     };
+
+    // Choose one presentation after creating the original cross-device request.
+    // An accepted workspace route never changes merely because a browser is offline.
+    if let Some(consumer) = crate::workspace_consumer::Consumer::offer(&mcp_request).await {
+        match consumer.wait(cross_registration.as_ref(), &response_file, delivery, &mcp_request, &ready_file, || {
+            emit_interaction_phase(request, InteractionPhase::WaitingUser, &request_id);
+            notify_bridge_apns_on_popup_ready(request_id.clone(), request);
+        }).await {
+            Ok(()) => {
+                emit_interaction_phase(request, InteractionPhase::Responded, &request_id);
+                let response = read_response_file_with_retry(&response_file)
+                    .ok().and_then(|text|serde_json::from_str::<serde_json::Value>(&text).ok());
+                if let Some(response) = response {
+                    cleanup_temp_files();
+                    emit_interaction_phase(request, InteractionPhase::Cleaning, &request_id);
+                    let result = accepted_dialog_response(&response, &request_id, &cross_registration).await;
+                    consumer.track_handoff(delivery.cloned(), &response);
+                    return result;
+                }
+                cleanup_temp_files();
+                return DialogResponse { error:Some("Conversation reply could not be read".into()), ..Default::default() };
+            }
+            Err(error) => {
+                cleanup_temp_files();
+                emit_interaction_phase(request, InteractionPhase::Failed, &request_id);
+                return DialogResponse { error:Some(error), ..Default::default() };
+            }
+        }
+    }
 
     // 启动 GUI 进程（子进程），重定向 stdout/stderr 避免日志污染终端
     let exe_path = dialog_gui_executable_path();
@@ -1857,129 +2009,10 @@ async fn handle_dialog_request(request: &DialogRequest) -> DialogResponse {
                             cleanup_temp_files();
                             emit_interaction_phase(request, InteractionPhase::Cleaning, &request_id);
 
-                            if response.as_str() == Some("CANCELLED") {
-                                if bridge_written_response {
-                                    close_after_remote_response
-                                        .store(true, std::sync::atomic::Ordering::Release);
-                                }
-                                return DialogResponse {
-                                    keep_going: false,
-                                    response_source: crate::conversation::POPUP_CLOSED_SOURCE.to_string(),
-                                    error: None,
-                                    ..Default::default()
-                                };
-                            }
-
-                            let raw_user_input = response
-                                .get("user_input")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let submitted_options: Vec<String> = response
-                                .get("selected_options")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|v| v.as_str().map(String::from))
-                                        .collect()
-                                })
-                                .unwrap_or_default();
-                            let submitted_source = response
-                                .get("metadata")
-                                .and_then(|v| v.get("source"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
                             if bridge_written_response {
-                                close_after_remote_response
-                                    .store(true, std::sync::atomic::Ordering::Release);
+                                close_after_remote_response.store(true, std::sync::atomic::Ordering::Release);
                             }
-                            let explicit_end =
-                                crate::conversation::is_explicit_conversation_end_response(
-                                    &raw_user_input,
-                                    &submitted_options,
-                                );
-                            let popup_closed =
-                                crate::conversation::is_popup_closed_response_source(&submitted_source);
-                            let interaction_ended = explicit_end || popup_closed;
-
-                            // 结束当前交互时不携带选项或附件进入业务响应。
-                            let image_paths = if interaction_ended {
-                                vec![]
-                            } else if let Some(images) =
-                                response.get("images").and_then(|v| v.as_array())
-                            {
-                                save_images_to_files(images)
-                            } else {
-                                vec![]
-                            };
-
-                            let response_source = if explicit_end {
-                                crate::conversation::EXPLICIT_CONVERSATION_END_SOURCE.to_string()
-                            } else if popup_closed {
-                                crate::conversation::POPUP_CLOSED_SOURCE.to_string()
-                            } else {
-                                submitted_source
-                            };
-                            let file_paths: Vec<String> = if interaction_ended {
-                                vec![]
-                            } else {
-                                response
-                                    .get("file_paths")
-                                    .and_then(|v| v.as_array())
-                                    .map(|arr| {
-                                        arr.iter()
-                                            .filter_map(|v| v.as_str().map(String::from))
-                                            .collect()
-                                    })
-                                    .unwrap_or_default()
-                            };
-                            let mut metadata = response
-                                .get("metadata")
-                                .cloned()
-                                .and_then(|value| {
-                                    serde_json::from_value::<crate::mcp::ResponseMetadata>(value).ok()
-                                })
-                                .unwrap_or_default();
-                            // The HTTP handler must confirm the registration
-                            // belonging to this serve request, never an ID
-                            // supplied inside a remote response body.
-                            if cross_registration.is_some() {
-                                metadata.request_id = Some(request_id.clone());
-                            }
-                            if interaction_ended {
-                                metadata.source = Some(response_source.clone());
-                            }
-                            let user_input = enrich_goal_user_input_with_attachment_paths(
-                                raw_user_input,
-                                &response_source,
-                                &file_paths,
-                                &image_paths,
-                            );
-
-                            let dialog_response = DialogResponse {
-                                keep_going: !interaction_ended,
-                                user_input,
-                                response_source,
-                                selected_options: if interaction_ended {
-                                    vec![]
-                                } else {
-                                    submitted_options
-                                },
-                                file_paths,
-                                image_paths,
-                                metadata,
-                                source_request_id: cross_registration.as_ref().map(|_| request_id.clone()),
-                                error: None,
-                            };
-                            if let Some(registration) = &cross_registration {
-                                if let Err(error) = crate::cross_device::mark_source_prepared(registration, &response) {
-                                    instance_debug_log("[serve-request-cross-device-prepare-failed]", format!("request_id={}, error={}", request_id, error));
-                                } else if let Err(error) = crate::cross_device::record_accepted_response(registration, &response).await {
-                                    instance_debug_log("[serve-request-cross-device-history-failed]", format!("request_id={}, error={}", request_id, error));
-                                }
-                            }
-                            return dialog_response;
+                            return accepted_dialog_response(&response, &request_id, &cross_registration).await;
                         }
                         instance_debug_log(
                             "[serve-request-response-parse-failed]",
@@ -2592,6 +2625,15 @@ fn write_stdout_lossy(text: &str) {
 mod tests {
     use super::*;
     use std::fs::File;
+
+    #[tokio::test]
+    async fn consumer_response_reuses_original_normalization() {
+        let id="serve-consumer-test".to_string();
+        let normal=accepted_dialog_response(&serde_json::json!({"user_input":"phone text","selected_options":["yes","more"],"file_paths":["E:/a.txt"],"metadata":{"source":"popup"}}),&id,&None).await;
+        assert!(normal.keep_going);assert_eq!(normal.user_input,"phone text");assert_eq!(normal.selected_options,vec!["yes","more"]);assert_eq!(normal.file_paths,vec!["E:/a.txt"]);
+        let closed=accepted_dialog_response(&serde_json::json!({"user_input":"draft","selected_options":["yes"],"file_paths":["E:/a.txt"],"metadata":{"source":"popup_closed"}}),&id,&None).await;
+        assert!(!closed.keep_going);assert!(closed.selected_options.is_empty());assert!(closed.file_paths.is_empty());
+    }
 
     fn spawn_retained_child_for_test() -> std::process::Child {
         #[cfg(target_os = "windows")]

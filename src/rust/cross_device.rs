@@ -199,6 +199,24 @@ impl Registration {
     pub fn is_published(&self) -> bool {
         self.published
     }
+    /// Presentation consumers use the same receipt lock as popup and peer replies.
+    pub(crate) fn submit_consumer(&self, response: &Value) -> Result<()> {
+        commit(self, response, false)
+    }
+    /// Unlike shutdown recovery, polling a live consumer never cancels a request.
+    pub(crate) fn materialize_consumer_winner(&self) -> Result<bool> {
+        let _admission = hub_transport::submission_guard(true)?;
+        let _guard = self.request_lock()?;
+        if self.response_file.exists() { return Ok(true); }
+        let path = self.result_path()?;
+        if !path.exists() { return Ok(false); }
+        let receipt: Value = read_json(&path)?;
+        if let Some(response) = receipt.get("response") {
+            atomic_json(&self.response_file, response)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
     fn trusted_timeline_route(&self) -> Option<String> {
         (self.request.get("codex_thread_provenance").and_then(Value::as_str) == Some("caller_meta"))
             .then(|| self.request.get("codex_thread_id").and_then(Value::as_str))
@@ -1665,6 +1683,31 @@ pub fn run_daemon(_port: u16) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consumer_poll_preserves_pending_and_uses_one_local_remote_winner() {
+        let temp=tempfile::tempdir().unwrap();
+        let previous=std::env::var_os("ITERATE_CROSS_DEVICE_DIR");
+        std::env::set_var("ITERATE_CROSS_DEVICE_DIR",temp.path());
+        let reg=Registration { key:uuid::Uuid::new_v4().to_string(),origin_device_id:"fixture".into(),origin_name:"fixture".into(),origin_platform:None,
+            request:json!({"id":"serve-consumer-test","project_path":"E:/test"}),request_file:temp.path().join("request.json"),response_file:temp.path().join("response.json"),published:false };
+        fs::write(&reg.request_file,b"{}").unwrap();reg.renew();
+        assert!(!reg.materialize_consumer_winner().unwrap());
+        assert!(!reg.materialize_consumer_winner().unwrap());
+        assert!(!reg.result_path().unwrap().exists(),"polling cannot cancel an unanswered question");
+        let barrier=Arc::new(std::sync::Barrier::new(3));
+        let local=json!({"user_input":"workspace","selected_options":["one"]});
+        let remote=json!({"user_input":"Mac or phone","selected_options":[]});
+        let a=std::thread::spawn({let reg=reg.clone();let b=barrier.clone();let response=local.clone();move||{b.wait();reg.submit_consumer(&response).is_ok()}});
+        let b=std::thread::spawn({let reg=reg.clone();let b=barrier.clone();let response=remote.clone();move||{b.wait();commit(&reg,&response,true).is_ok()}});
+        barrier.wait();assert_ne!(a.join().unwrap(),b.join().unwrap());
+        assert!(reg.materialize_consumer_winner().unwrap());
+        let winner=read_json::<Value>(&reg.response_file).unwrap();
+        assert!(winner==local||winner==remote);
+        assert_eq!(read_json::<Value>(&reg.result_path().unwrap()).unwrap()["response"],winner);
+        assert!(reg.submit_consumer(&winner).is_ok(),"same winner retry is idempotent");
+        match previous {Some(value)=>std::env::set_var("ITERATE_CROSS_DEVICE_DIR",value),None=>std::env::remove_var("ITERATE_CROSS_DEVICE_DIR")}
+    }
 
     #[cfg(target_os = "windows")]
     fn registered_recovery_fixture(published: bool) -> (tempfile::TempDir, tempfile::TempDir, Registration, crate::ui::window_registry::WindowInstance) {

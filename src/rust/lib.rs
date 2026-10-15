@@ -7,6 +7,7 @@ pub mod constants;
 pub mod conversation;
 pub mod cross_device;
 pub mod delivery;
+mod workspace_consumer;
 pub mod ghost_suggestion_learning;
 pub mod ghost_suggestions;
 pub mod ipc;

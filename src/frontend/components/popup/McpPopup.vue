@@ -1437,7 +1437,11 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="isVisible" class="flex flex-col flex-1 min-h-0">
+  <div
+    v-if="isVisible"
+    class="flex flex-col flex-1 min-h-0 rounded-lg border"
+    :class="mcpDeliveryStatus === 'returned' ? 'border-transparent' : 'border-amber-400/60'"
+  >
     <!-- 内容区域 - 可滚动，与右侧时间线小球条并排 -->
     <div
       class="flex flex-1 min-h-0 overflow-hidden"
